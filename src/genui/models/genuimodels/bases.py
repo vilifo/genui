@@ -136,7 +136,7 @@ class Algorithm(ABC):
         self._builder = weakref.ref(builder)
         self.instance = self.builder.instance
         self.trainingInfo = self.builder.training
-        self.validationInfo = self.builder.validation
+        self.validationInfo = self.builder.validations
         self.params = {x.parameter.name : x.value for x in self.trainingInfo.parameters.all()}
         self.mode = self.trainingInfo.mode
         self.callback = callback
