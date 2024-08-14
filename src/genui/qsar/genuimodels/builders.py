@@ -12,23 +12,20 @@ from django.core.exceptions import ImproperlyConfigured
 from rdkit import Chem
 
 from genui.models.genuimodels.bases import Algorithm
-from genui.models.models import ModelPerformanceCV
+from genui.models.models import ModelPerformanceCV, ModelFile
 from . import bases
 # CHANGE: Updated imports to use more specific model references
 from genui.models import models as core_models
 from genui.qsar import models as qsar_models
-from sklearn.model_selection import KFold, StratifiedKFold
+from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
+from django.core.files.base import ContentFile
 
 class BasicQSARModelBuilder(bases.QSARModelBuilder):
     # CHANGE: Updated __init__ method to handle multiple validation strategies
     def __init__(self, instance: qsar_models.Model, progress=None, onFitCall=None, validations=None):
         super().__init__(instance, progress, onFitCall)
-        # Use provided validations or fetch all from the training strategy
-        self.validations = validations if validations and len(validations) \
-            > 0 else self.instance.trainingStrategy.validationStrategies.all()
-            # Checks 
-        # CHANGE: Allow for custom validation strategies or use all associated with the training strategy.
-        # This provides flexibility in choosing validation approaches for each model build.
+        self.validations = validations if validations and len(validations) > 0 else self.instance.trainingStrategy.validationStrategies.all()
+
     def build(self) -> qsar_models.QSARModel:
         if not self.validations:
             raise ImproperlyConfigured("You cannot build a QSAR model without validation strategies.")
@@ -45,38 +42,99 @@ class BasicQSARModelBuilder(bases.QSARModelBuilder):
         for validation in self.validations:
             self.progressStages.extend([f"CV fold {x+1}" for x in range(validation.cvFolds)])
         self.progressStages.extend(["Fitting model on the training set...", "Validating on test set..."])
-        self.progressStages.extend(["Fitting the final model..."])
+        self.progressStages.extend(["Fitting the final model...", "Saving the model..."])
 
         self.recordProgress()
         mols = self.saveActivities()[1]
 
         self.recordProgress()
         self.calculateDescriptors(mols)
-        # CHANGE: Apply each validation strategy separately
-        for validation in self.validations: 
-            if hasattr(validation, 'valid_set_size') and hasattr(validation, 'cvFolds'):
-                # handle multiple validation strategies
-                X_valid = self.X.sample(frac=validation.valid_set_size)
-                X_train = self.X.drop(X_valid.index)
-                y_valid = self.y[X_valid.index]
-                y_train = self.y.drop(y_valid.index)
 
+        X = self.getX()
+        y = self.getY()
+
+        for validation in self.validations:
+            if hasattr(validation, 'validSetSize') and hasattr(validation, 'cvFolds'):
+                # Calculate the size of the validation set
+                valid_set_size = validation.validSetSize if isinstance(validation.validSetSize, float) else 0.2
+
+                # Use train_test_split for each validation strategy
+                X_train, X_valid, y_train, y_valid = train_test_split(
+                    X, y, 
+                    test_size=valid_set_size, 
+                    random_state=42  # You can make this configurable if needed
+                )
+
+                # Perform cross-validation
                 is_regression = self.training.mode.name == Algorithm.REGRESSION
                 if is_regression:
                     folds = KFold(validation.cvFolds).split(X_train)
                 else:
                     folds = StratifiedKFold(validation.cvFolds).split(X_train, y_train)
-                for i, (trained, validated) in enumerate(folds):
-                    self.recordProgress()
-                    self.fitAndValidate(X_train.iloc[trained], y_train.iloc[trained], X_train.iloc[validated], y_train.iloc[validated], perfClass=core_models.ModelPerformanceCV, fold=i + 1)
 
-        model = self.algorithmClass(self)
+                for i, (train_index, test_index) in enumerate(folds):
+                    self.recordProgress()
+                    self.fitAndValidate(
+                        X_train.iloc[train_index], y_train.iloc[train_index],
+                        X_train.iloc[test_index], y_train.iloc[test_index],
+                        perfClass=core_models.ModelPerformanceCV, 
+                        fold=i + 1
+                    )
+
+                # Validate on the held-out validation set
+                self.fitAndValidate(X_train, y_train, X_valid, y_valid)
+
+        # Final model fitting on all data
+        final_model = self.algorithmClass(self)
+        final_model.fit(X, y)
+        self._model = final_model
+
+        # Final validation (optional, as it's not truly a validation)
+        y_predicted = final_model.predict(X)
+        for validation in self.validations:
+            self.validate(validation, y, y_predicted)
+
         self.recordProgress()
-        model.fit(X_train, y_train)
-        self.recordProgress()
-        self.fitAndValidate(X_train, y_train, X_valid, y_valid)
-        self.recordProgress()
-        return super().build()
+        self.saveFile()
+        return self.instance
+
+    def saveModel(self, model):
+        """
+        Save the trained model to a file.
+
+        This method handles the creation and updating of the model file associated
+        with the current instance. If no model file exists, it creates one. Then,
+        it serializes the model to the file.
+
+        Args:
+            model: The trained model object to be saved.
+
+        Note:
+            - Uses the first file format associated with the training algorithm.
+            - Creates a new ModelFile if one doesn't exist for this instance.
+            - Serializes the model using the model's own serialization method.
+        """
+        # Get the first file format associated with the training algorithm
+        model_format = self.training.algorithm.fileFormats.all()[0]
+
+        # Create a new ModelFile if one doesn't exist for this instance
+        if not self.instance.modelFile:
+            ModelFile.create(
+                self.instance,
+                f'main.{model_format.fileExtension}',
+                ContentFile('placeholder'),  # Initial content, will be overwritten
+                kind=ModelFile.MAIN,
+                note=f'{self.training.algorithm.name}_main'
+            )
+
+        # Get the path of the model file
+        path = self.instance.modelFile.path
+
+        # Serialize the model to the file
+        model.serialize(path)
+
+        # Save the instance to ensure any changes are persisted
+        self.instance.save()
 
     def predictMolecules(self, mols):
         smiles = []
