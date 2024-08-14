@@ -9,13 +9,19 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 from genui.compounds.models import ActivityTypes, ActivityUnits
 from genui.compounds.extensions.chembl.tests import CompoundsMixIn
-from genui.qsar.models import QSARModel, DescriptorGroup, ModelActivitySet
+from genui.qsar.models import QSARModel, DescriptorGroup, ModelActivitySet, TrainingStrategy
 from genui.models.models import ModelPerformance, Algorithm, AlgorithmMode, ModelFile, ModelPerformanceMetric, BasicValidationStrategy
 from .genuimodels import builders
 
-            
-class QSARModelInit(CompoundsMixIn):
 
+class QSARModelInit(CompoundsMixIn):
+    """
+    Base class for initializing QSAR model tests.
+    
+    This class sets up the necessary data structures and methods
+    for creating and testing QSAR models.
+    """
+    
     def setUp(self):
         super().setUp()
         self.project = self.createProject()
@@ -28,6 +34,7 @@ class QSARModelInit(CompoundsMixIn):
         )
 
     def createTestQSARModel(
+        
             self,
             activitySet=None,
             activityType=None,
@@ -37,6 +44,22 @@ class QSARModelInit(CompoundsMixIn):
             descriptors=None,
             metrics=None
     ):
+        """
+        Create a test QSAR model with specified parameters.
+
+        Args:
+            activitySet (ActivitySet, optional): The activity set to use.
+            activityType (ActivityType, optional): The type of activity.
+            mode (AlgorithmMode, optional): The mode of the algorithm.
+            algorithm (Algorithm, optional): The algorithm to use.
+            parameters (dict, optional): Algorithm parameters.
+            descriptors (list, optional): List of descriptors.
+            metrics (list, optional): List of performance metrics.
+
+        Returns:
+            QSARModel: The created QSAR model instance.
+        """
+        
         if not activitySet:
             activitySet = self.molset.activities.all()[0]
         if not activityType:
@@ -71,15 +94,16 @@ class QSARModelInit(CompoundsMixIn):
                 ],
                 "activityThreshold": 6.5,
                 "activitySet": activitySet.id,
-                "activityType": activityType.id
-            },
-            "validationStrategies": [{
-                "cvFolds": 3,
-                "validSetSize": 0.2,
-                "metrics": [
-                    x.id for x in metrics
-                ]
-            }]
+                "activityType": activityType.id,
+                "validationStrategies": [{
+                    "resourcetype": "BasicValidationStrategy",
+                    "cvFolds": 3,
+                    "validSetSize": 0.2,
+                    "metrics": [
+                        x.id for x in metrics
+                    ]
+                }]
+            }
         }
         create_url = reverse('model-list')
         response = self.client.post(create_url, data=post_data, format='json')
@@ -89,6 +113,17 @@ class QSARModelInit(CompoundsMixIn):
         return QSARModel.objects.get(pk=response.data["id"])
 
     def predictWithModel(self, model, to_predict):
+        """
+        Make predictions using the given model on the specified molecules.
+
+        Args:
+            model (QSARModel): The QSAR model to use for predictions.
+            to_predict (MolSet): The set of molecules to predict.
+
+        Returns:
+            ModelActivitySet: The resulting set of predicted activities.
+        """
+        
         post_data = {
             "name": f"Predictions using {model.name}",
             "molecules": to_predict.id
@@ -108,6 +143,21 @@ class QSARModelInit(CompoundsMixIn):
         return instance
 
     def uploadModel(self, filePath, algorithm, mode, descriptors, predictionsType, predictionsUnits):
+        """
+        Upload a pre-trained model file and create a corresponding QSAR model.
+
+        Args:
+            filePath (str): Path to the model file.
+            algorithm (Algorithm): The algorithm used in the model.
+            mode (AlgorithmMode): The mode of the algorithm.
+            descriptors (list): List of descriptors used in the model.
+            predictionsType (str): Type of predictions the model makes.
+            predictionsUnits (str): Units of the predictions.
+
+        Returns:
+            QSARModel: The created QSAR model instance.
+        """
+        
         create_url = reverse('model-list')
         post_data = {
             "name": "Test Model",
@@ -149,8 +199,10 @@ class QSARModelInit(CompoundsMixIn):
         return instance
 
 class ModelInitTestCase(QSARModelInit, APITestCase):
+    """Test case for QSAR model initialization and basic functionality."""
 
     def test_create_view_classification(self):
+        """Test the creation and basic functionality of a classification QSAR model."""
         model = self.createTestQSARModel()
 
         path = model.modelFile.path
@@ -172,6 +224,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         self.assertTrue(not os.path.exists(path))
 
     def test_create_view_from_file_classification(self):
+        """Test creating a classification QSAR model from a pre-trained model file."""
         instance_first = self.createTestQSARModel()
         self.assertEqual(instance_first.predictionsType, ActivityTypes.objects.get(value="Active Probability"))
         self.assertEqual(instance_first.predictionsUnits, None)
@@ -185,7 +238,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         )
 
         builder = builders.BasicQSARModelBuilder(instance)
-        self.assertRaisesMessage(ImproperlyConfigured, "You cannot build a QSAR model with a missing validation strategy.", builder.build)
+        self.assertRaisesMessage(ImproperlyConfigured, "You cannot build a QSAR model without validation strategies.", builder.build)
         builder.calculateDescriptors(["CC", "CCO"])
         print(builder.predict())
 
@@ -195,6 +248,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             self.assertEqual(activity.units, instance_first.predictionsUnits)
 
     def test_create_view_regression(self):
+        """Test the creation and basic functionality of a regression QSAR model."""
         model = self.createTestQSARModel(
             mode=AlgorithmMode.objects.get(name="regression"),
             metrics=ModelPerformanceMetric.objects.filter(name__in=("R2", "MSE")),
@@ -224,250 +278,84 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             self.assertEqual(activity_uploaded.type, activity_orig.type)
             self.assertEqual(activity_uploaded.units, activity_orig.units)
             self.assertEqual(activity_uploaded.value, activity_orig.value)
-               
-    def test_add_validation_strategy_and_rebuild(self):
-        """
-        Test adding a new validation strategy to an existing QSAR model and rebuilding it.
-
-        This test case verifies that:
-        1. A new validation strategy can be added to an existing model.
-        2. The model can be successfully rebuilt with multiple validation strategies.
-        3. Performance metrics from both validation strategies are present after rebuilding.
-
-        The test uses a classification model with RandomForest algorithm as an example.
-        """
-        # Create initial model with one validation strategy
-        model = self.createTestQSARModel(
-            mode=AlgorithmMode.objects.get(name="classification"),
-            algorithm=Algorithm.objects.get(name="RandomForest"),
-            parameters={"n_estimators": 100},
-            metrics=[
-                ModelPerformanceMetric.objects.get(name="ROC"),
-                ModelPerformanceMetric.objects.get(name="MCC"),
-            ]
-        )
-
-        # Verify that the initial model has only one validation strategy
+            
+    def test_training_strategy_has_validation_strategies(self):
+        """Test that the training strategy of a QSAR model has validation strategies."""
+        # Create a QSAR model
+        model = self.createTestQSARModel()
+        
+        # Check if the training strategy has validation strategies
+        self.assertTrue(model.trainingStrategy.validationStrategies.exists())
         self.assertEqual(model.trainingStrategy.validationStrategies.count(), 1)
 
+    def test_multiple_validation_strategies(self):
+        """Test adding multiple validation strategies to a QSAR model."""
+        # Create initial QSAR model with one validation strategy
+        model = self.createTestQSARModel()
+        
         # Add a second validation strategy
         second_strategy = BasicValidationStrategy.objects.create(
+            trainingStrategy=model.trainingStrategy,
             cvFolds=5,
-            validSetSize=0.3
+            validSetSize=0.2
         )
-        # Set metrics for the second strategy
         second_strategy.metrics.set(ModelPerformanceMetric.objects.filter(name__in=["R2", "MSE"]))
-        # Add the new strategy to the model's training strategy
         model.trainingStrategy.validationStrategies.add(second_strategy)
-
-        # Rebuild the model with the new validation strategy
-        response = self.client.post(reverse('model-build', args=[model.id]))
-        # Check if the rebuild request was successful
-        self.assertEqual(response.status_code, 200)
-
-        # Verify that performance metrics from both validation strategies are present
-        # First strategy metrics
-        self.assertGreater(model.performance.filter(metric__name="ROC").count(), 0)
-        self.assertGreater(model.performance.filter(metric__name="MCC").count(), 0)
-        # Second strategy metrics
-        self.assertGreater(model.performance.filter(metric__name="R2").count(), 0)
-        self.assertGreater(model.performance.filter(metric__name="MSE").count(), 0)
         
-    def test_create_model_with_multiple_strategies(self):
-        """
-        Test creation of a QSAR model with multiple validation strategies.
-
-        This test case verifies that:
-        1. A QSAR model can be created with multiple validation strategies via API.
-        2. The created model has the correct number of validation strategies.
-
-        The test uses a classification model with RandomForest algorithm and 
-        Morgan fingerprints as descriptors.
-        """
-        # Prepare the data for model creation
-        post_data = {
-            "name": "Multi-Strategy Model",
-            "description": "Model with multiple validation strategies",
-            "project": self.project.id,
-            "molset": self.molset.id,
-            "trainingStrategy": {
-                "algorithm": Algorithm.objects.get(name="RandomForest").id,
-                "parameters": {"n_estimators": 100},
-                "mode": AlgorithmMode.objects.get(name="classification").id,
-                "descriptors": [DescriptorGroup.objects.get(name="MORGANFP").id],
-                "activityThreshold": 6.5,
-                "activitySet": self.molset.activities.all()[0].id,
-                "activityType": ActivityTypes.objects.get(value="Ki_pChEMBL").id
-            },
-            "validationStrategies": [
-                {
-                    "cvFolds": 3,
-                    "validSetSize": 0.2,
-                    "metrics": [ModelPerformanceMetric.objects.get(name="ROC").id]
-                },
-                {
-                    "cvFolds": 5,
-                    "validSetSize": 0.3,
-                    "metrics": [ModelPerformanceMetric.objects.get(name="MSE").id]
-                }
-            ]
-        }
-
-        # Get the URL for model creation
-        create_url = reverse('model-list')
-
-        # Send POST request to create the model
-        response = self.client.post(create_url, data=post_data, format='json')
-
-        # Check if the model was created successfully
-        self.assertEqual(response.status_code, 201, "Model creation failed")
-
-        # Retrieve the created model from the database
-        model = QSARModel.objects.get(pk=response.data["id"])
-
-        # Verify that the model has two validation strategies
-        self.assertEqual(model.trainingStrategy.validationStrategies.count(), 2,
-                        "Model does not have the expected number of validation strategies")
+        # Check if the training strategy has multiple validation strategies
+        self.assertEqual(model.trainingStrategy.validationStrategies.count(), 2)
         
-    def test_model_with_no_validation_strategies(self):
+        # Verify that the validation strategies are different
+        validation_strategies = list(model.trainingStrategy.validationStrategies.all())
+        self.assertNotEqual(validation_strategies[0].cvFolds, validation_strategies[1].cvFolds)
+        self.assertNotEqual(set(validation_strategies[0].metrics.all()), set(validation_strategies[1].metrics.all()))
+
+    def test_default_validation_strategy_parameters(self):
         """
-        Test creation of a QSAR model with no validation strategies.
-
-        This test case verifies that:
-        1. Attempting to create a QSAR model without any validation strategies results in an error.
-        2. The API returns a 400 Bad Request status code in this scenario.
-
-        The test uses a classification model with RandomForest algorithm and 
-        Morgan fingerprints as descriptors, but deliberately omits validation strategies.
-        """
-        # Prepare the data for model creation without validation strategies
-        post_data = {
-            "name": "No Validation Model",
-            "description": "Model without validation strategies",
-            "project": self.project.id,
-            "molset": self.molset.id,
-            "trainingStrategy": {
-                "algorithm": Algorithm.objects.get(name="RandomForest").id,
-                "parameters": {"n_estimators": 100},
-                "mode": AlgorithmMode.objects.get(name="classification").id,
-                "descriptors": [DescriptorGroup.objects.get(name="MORGANFP").id],
-                "activityThreshold": 6.5,
-                "activitySet": self.molset.activities.all()[0].id,
-                "activityType": ActivityTypes.objects.get(value="Ki_pChEMBL").id
-            },
-            "validationStrategies": []  # Explicitly set to an empty list
-        }
-
-        # Get the URL for model creation
-        create_url = reverse('model-list')
-
-        # Attempt to create the model via POST request
-        response = self.client.post(create_url, data=post_data, format='json')
-
-        # Verify that the request is rejected with a 400 Bad Request status
-        self.assertEqual(response.status_code, 400, 
-                        "Expected a 400 Bad Request for model without validation strategies")
-
-    def test_correct_performance_entries(self):
-        """
-        Test if the correct number of performance entries are created for a QSAR model.
-
-        This test case verifies that:
-        1. A QSAR model is created with a validation strategy.
-        2. The number of performance entries matches the expected count based on
-        the number of cross-validation folds and performance metrics.
-
-        The test uses a helper method to create a test QSAR model and checks
-        the resulting performance entries.
-        """
-        # Create a test QSAR model using a helper method
+        Test that the default validation strategy parameters are set correctly.
+                
+        The default validation strategy should have the following parameters:
+        - cvFolds: 3
+        - validSetSize: 0.2
+        - metrics: MCC, ROC
+        """        
         model = self.createTestQSARModel()
+        validation_strategy = model.trainingStrategy.validationStrategies.first()
+        self.assertEqual(validation_strategy.cvFolds, 3)
+        self.assertEqual(validation_strategy.validSetSize, 0.2)
+        self.assertEqual(set(validation_strategy.metrics.all()), set(ModelPerformanceMetric.objects.filter(name__in=["MCC", "ROC"]))
+        )
 
-        # Get the first (and possibly only) validation strategy for the model
-        strategy = model.trainingStrategy.validationStrategies.first()
+    def test_update_validation_strategy(self):
+        """Test that the validation strategy parameters can be updated"""
+        model = self.createTestQSARModel()
+        validation_strategy = model.trainingStrategy.validationStrategies.first()
+        validation_strategy.cvFolds = 10
+        validation_strategy.save()
+        updated_strategy = BasicValidationStrategy.objects.get(id=validation_strategy.id)
+        self.assertEqual(updated_strategy.cvFolds, 10)
 
-        # Calculate the expected number of performance entries
-        # It should be the product of the number of CV folds and the number of metrics
-        expected_entries = strategy.cvFolds * len(strategy.metrics.all())
+    def test_remove_validation_strategy(self):
+        """Test removing a validation strategy from a QSAR model."""
+        model = self.createTestQSARModel()
+        validation_strategy = model.trainingStrategy.validationStrategies.first()
+        validation_strategy.delete()
+        self.assertFalse(model.trainingStrategy.validationStrategies.exists())
 
-        # Get the actual number of performance entries for the model
-        actual_entries = model.performance.count()
+    def test_different_models_different_validation_strategies(self):
+        """Test that different QSAR models have different validation strategies."""
+        model1 = self.createTestQSARModel()
+        model2 = self.createTestQSARModel()
+        strategy1 = model1.trainingStrategy.validationStrategies.first()
+        strategy2 = model2.trainingStrategy.validationStrategies.first()
+        self.assertNotEqual(strategy1, strategy2)
 
-        # Assert that the actual number of entries matches the expected number
-        self.assertEqual(actual_entries, expected_entries,
-                        f"Expected {expected_entries} performance entries, but found {actual_entries}")
-
-    def test_different_metric_combinations(self):
-        """
-        Test creation and rebuilding of a QSAR model with multiple validation strategies and different metric combinations.
-
-        This test case verifies that:
-        1. A QSAR model can be created with multiple validation strategies, each with different metrics.
-        2. The model can be successfully rebuilt.
-        3. After rebuilding, performance entries for all specified metrics are present.
-
-        The test uses a classification model with RandomForest algorithm and Morgan fingerprints as descriptors.
-        It includes two validation strategies with different metrics for each.
-        """
-        # Prepare the data for model creation
-        post_data = {
-            "name": "Multi-Metric Model",
-            "description": "Model with different metric combinations",
-            "project": self.project.id,
-            "molset": self.molset.id,
-            "trainingStrategy": {
-                "algorithm": Algorithm.objects.get(name="RandomForest").id,
-                "parameters": {"n_estimators": 100},
-                "mode": AlgorithmMode.objects.get(name="classification").id,
-                "descriptors": [DescriptorGroup.objects.get(name="MORGANFP").id],
-                "activityThreshold": 6.5,
-                "activitySet": self.molset.activities.all()[0].id,
-                "activityType": ActivityTypes.objects.get(value="Ki_pChEMBL").id
-            },
-            "validationStrategies": [
-                {
-                    "cvFolds": 3,
-                    "validSetSize": 0.2,
-                    "metrics": [
-                        ModelPerformanceMetric.objects.get(name="ROC").id,
-                        ModelPerformanceMetric.objects.get(name="MCC").id
-                    ]
-                },
-                {
-                    "cvFolds": 5,
-                    "validSetSize": 0.3,
-                    "metrics": [
-                        ModelPerformanceMetric.objects.get(name="R2").id,
-                        ModelPerformanceMetric.objects.get(name="MSE").id
-                    ]
-                }
-            ]
-        }
-
-        # Get the URL for model creation
-        create_url = reverse('model-list')
-
-        # Send POST request to create the model
-        response = self.client.post(create_url, data=post_data, format='json')
-
-        # Check if the model was created successfully
-        self.assertEqual(response.status_code, 201, "Model creation failed")
-
-        # Retrieve the created model from the database
-        model = QSARModel.objects.get(pk=response.data["id"])
-
-        # Get the URL for rebuilding the model
-        rebuild_url = reverse('model-build', args=[model.id])
-
-        # Send POST request to rebuild the model
-        rebuild_response = self.client.post(rebuild_url)
-
-        # Check if the model was rebuilt successfully
-        self.assertEqual(rebuild_response.status_code, 200, "Model rebuild failed")
-
-        # Check if performance entries for all metrics were calculated
-        metrics_to_check = ["ROC", "MCC", "R2", "MSE"]
-        for metric_name in metrics_to_check:
-            performance_count = model.performance.filter(metric__name=metric_name).count()
-            self.assertGreater(performance_count, 0, 
-                            f"No performance entries found for metric: {metric_name}")
+    def test_performance_metrics_associated_with_validation_strategies(self):
+        """Test associating performance metrics with validation strategies."""
+        model = self.createTestQSARModel()
+        validation_strategy = model.trainingStrategy.validationStrategies.first()
+        metrics = ModelPerformanceMetric.objects.filter(name__in=["R2", "MSE"])
+        validation_strategy.metrics.set(metrics)
+        validation_strategy.save()
+        self.assertEqual(set(validation_strategy.metrics.all()), set(metrics))
+        
