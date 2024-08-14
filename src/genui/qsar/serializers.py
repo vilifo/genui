@@ -43,7 +43,6 @@ class QSARTrainingStrategyInitSerializer(TrainingStrategyInitSerializer):
         
 class QSARModelSerializer(ModelSerializer):
     trainingStrategy = QSARTrainingStrategySerializer(many=False)
-    validationStrategies = ValidationStrategyPolymorphicSerializer(many=True, read_only=True)
     molset = MolSetSerializer(many=False, required=False)
     predictions = serializers.PrimaryKeyRelatedField(many=True, queryset=models.ActivitySet.objects.all())
     predictionsType = ActivityTypeSerializer(many=False)
@@ -59,11 +58,10 @@ class QSARModelInitSerializer(QSARModelSerializer):
     molset = serializers.PrimaryKeyRelatedField(many=False, queryset=models.MolSet.objects.all(), required=False)
     predictionsType = serializers.CharField(required=False, max_length=128, allow_null=False)
     predictionsUnits = serializers.CharField(required=False, max_length=128, allow_null=True)
-    # validationStrategies = serializers.ListField(child=serializers.DictField(), required=False)
-    validationStrategies = ValidationStrategyPolymorphicSerializer(many=True, required=False)
+
     class Meta:
         model = models.QSARModel
-        fields = [x for x in QSARModelSerializer.Meta.fields if x not in ('predictions',)] + ['validationStrategies']
+        fields = [x for x in QSARModelSerializer.Meta.fields if x not in ('predictions',)]
         read_only_fields = QSARModelSerializer.Meta.read_only_fields
 
     def is_valid(self, raise_exception=True):
@@ -86,7 +84,7 @@ class QSARModelInitSerializer(QSARModelSerializer):
         return ret
 
     def create(self, validated_data, **kwargs):
-        validation_strategies_data = validated_data.pop('validationStrategies', [])
+        validation_strategies_data = validated_data['trainingStrategy'].pop('validationStrategies', [])
         instance = super().create(
             validated_data
             , molset=validated_data['molset'] if 'molset' in validated_data else None
