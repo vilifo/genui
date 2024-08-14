@@ -109,12 +109,17 @@ class BasicValidationStrategySerializer(BasicValidationStrategyInitSerializer):
     
 class ValidationStrategyPolymorphicSerializer(PolymorphicSerializer):
     model_serializer_mapping = {
-        ValidationStrategy: ValidationStrategySerializer,
         BasicValidationStrategy: BasicValidationStrategySerializer,
         # Add other subclasses and their serializers here
     }
     # CHANGE: Created a polymorphic serializer for validation strategies.
     # This allows handling multiple types of validation strategies within the same field.
+
+class ValidationStrategyPolymorphicInitSerializer(PolymorphicSerializer):
+    model_serializer_mapping = {
+        ValidationStrategy: ValidationStrategyInitSerializer,
+        BasicValidationStrategy: BasicValidationStrategyInitSerializer,
+        }
 
 class TrainingStrategySerializer(serializers.HyperlinkedModelSerializer):
     algorithm = AlgorithmSerializer(many=False)
@@ -133,7 +138,7 @@ class TrainingStrategyInitSerializer(TrainingStrategySerializer):
     algorithm = serializers.PrimaryKeyRelatedField(many=False, queryset=Algorithm.objects.all())
     parameters = serializers.DictField(allow_empty=True, child=serializers.CharField(), required=False)
     mode = serializers.PrimaryKeyRelatedField(many=False, queryset=AlgorithmMode.objects.all())
-    validationStrategies = BasicValidationStrategyInitSerializer(many=True, required=False)
+    validationStrategies = ValidationStrategyPolymorphicInitSerializer(many=True, required=False)
     # CHANGE: Added validationStrategies field to TrainingStrategySerializer.
     # This allows the API to return all validation strategies associated with a training strategy.
 
