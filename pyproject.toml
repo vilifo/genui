@@ -34,6 +34,7 @@ dependencies = [
     'django',
     'django-celery-results',
     'django-polymorphic',
+    'django-rest-polymorphic',
     'djangorestframework',
     'drf-extensions',
     'drf-yasg',
