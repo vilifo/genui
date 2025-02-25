@@ -8,19 +8,28 @@ On: 15-01-20, 12:55
 import traceback
 
 import numpy as np
-from django.core.exceptions import ImproperlyConfigured
+import pandas as pd
 from rdkit import Chem
-
-from genui.models.genuimodels.bases import Algorithm
-from genui.models.models import ModelPerformanceCV, ModelFile
-from . import bases
-# CHANGE: Updated imports to use more specific model references
-from genui.models import models as core_models
-from genui.qsar import models as qsar_models
+from pandas import DataFrame, Series
 from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
+
+from django.core.exceptions import ImproperlyConfigured
 from django.core.files.base import ContentFile
 
-class BasicQSARModelBuilder(bases.QSARModelBuilder):
+from genui.models.models import ModelFile
+# CHANGE: Updated imports to use more specific model references
+from genui.compounds.models import ActivityTypes, ActivitySet
+from genui.models.genuimodels.bases import Algorithm, CompleteBuilder
+from genui.models import models as core_models
+from genui.qsar import models as qsar_models
+from .bases import DescriptorBuilderMixIn
+
+from qsprpred.data.sampling import splits
+from qsprpred.data import QSPRDataset, MoleculeTable
+
+SPLIT_PARAMETERS = {"RandomSplit": ["testSize", "randomSeed"]}
+
+class BasicQSARModelBuilder(DescriptorBuilderMixIn, CompleteBuilder):
     # CHANGE: Updated __init__ method to handle multiple validation strategies
     def __init__(self, instance: qsar_models.Model, progress=None, onFitCall=None, validations=None):
         super().__init__(instance, progress, onFitCall)
@@ -49,21 +58,19 @@ class BasicQSARModelBuilder(bases.QSARModelBuilder):
 
         self.recordProgress()
         self.calculateDescriptors(mols)
-
+        # TODO: QSPRDataset should be used here also add as dataset to the builder itself
         X = self.getX()
         y = self.getY()
 
         for validation in self.validations:
-            if hasattr(validation, 'validSetSize') and hasattr(validation, 'cvFolds'):
-                # Calculate the size of the validation set
-                valid_set_size = validation.validSetSize if isinstance(validation.validSetSize, float) else 0.2
+            if hasattr(validation, 'dataSplit') and hasattr(validation, 'cvFolds'):
+                split_name = validation.dataSplit.__class__.__name__
+                split_instance = getattr(splits, split_name)
+                split_instance = split_instance(test_fraction=validation.dataSplit.testSize, seed=validation.dataSplit.randomSeed)
+                train, valid = [x for x in split_instance.split(X, y)][0]
 
-                # Use train_test_split for each validation strategy
-                X_train, X_valid, y_train, y_valid = train_test_split(
-                    X, y, 
-                    test_size=valid_set_size, 
-                    random_state=42  # You can make this configurable if needed
-                )
+                X_train, y_train = X.iloc[train], y.iloc[train]
+                X_valid, y_valid = X.iloc[valid], y.iloc[valid]
 
                 # Perform cross-validation
                 is_regression = self.training.mode.name == Algorithm.REGRESSION
@@ -199,4 +206,47 @@ class BasicQSARModelBuilder(bases.QSARModelBuilder):
                 self.errors.append(exp)
                 traceback.print_exc()
                 continue
+
+
+    def getX(self) -> DataFrame:
+        return self.X
+
+    def getY(self) -> Series:
+        return self.y
+
+    def saveActivities(self):
+        if not self.getY():
+            activity_set = ActivitySet.objects.get(pk=self.training.activitySet.id)
+            activity_type = self.training.activityType
+            if not activity_set:
+                raise Exception("No activity set specified.")
+            if not activity_type:
+                raise Exception("No activity type specified.")
+
+            compounds, activities, units = activity_set.cleanForModelling(activity_type)
+            if not len(compounds) == len(activities):
+                raise Exception(f'Number of compounds in a QSAR model ({len(compounds)}) is different from the set of activities assigned to them ({len(activities)}). Something went wrong when the data was cleaned for modeling.')
+            activities = Series(activities)
+
+            # use the activity threshold for classifications
+            if self.training.mode.name == Algorithm.CLASSIFICATION:
+                activity_thrs = self.training.activityThreshold
+                if activity_thrs is None:
+                    raise Exception('No activity threshold specified for classification model.')
+                activities = activities.apply(lambda x : 1 if x >= activity_thrs else 0)
+
+                if not self.instance.predictionsType:
+                    self.instance.predictionsType = ActivityTypes.objects.get_or_create(
+                        value="Active Probability"
+                    )[0]
+
+            if not self.instance.predictionsType:
+                self.instance.predictionsType = activity_type
+            if not self.instance.predictionsUnits:
+                self.instance.predictionsUnits = units
+
+            self.instance.save()
+            self.y = activities
+            return self.y, compounds
+
             

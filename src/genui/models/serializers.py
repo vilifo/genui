@@ -7,10 +7,11 @@ On: 24-01-20, 14:44
 from rest_framework import serializers
 from rest_polymorphic.serializers import PolymorphicSerializer
 
+from genui.compounds.models import MolSet
 from genui.utils.serializers import GenericModelSerializerMixIn
 from genui.models.models import ModelFileFormat, ModelBuilder, Model, PARAM_VALUE_CTYPE_TO_MODEL_MAP, ModelParameter, \
     Algorithm, TrainingStrategy, ModelFile, BasicValidationStrategy, ModelPerformanceMetric, ValidationStrategy, \
-    AlgorithmMode, ModelParameterValue, ModelPerformance
+    AlgorithmMode, ModelParameterValue, ModelPerformance, DataSplit, RandomSplit
 from genui.projects.models import Project
 
 class ModelFileFormatSerializer(serializers.HyperlinkedModelSerializer):
@@ -96,14 +97,14 @@ class ValidationStrategyInitSerializer(ValidationStrategySerializer):
 class BasicValidationStrategyInitSerializer(ValidationStrategyInitSerializer):
     metrics = serializers.PrimaryKeyRelatedField(many=True, queryset=ModelPerformanceMetric.objects.all())
     cvFolds = serializers.IntegerField(min_value=0)
-    validSetSize = serializers.FloatField(min_value=0)
+    dataSplit = serializers.PrimaryKeyRelatedField(many=False, queryset=DataSplit.objects.all())
 
     # TODO: check if correct metrics are used with the correct algorithm
 
     class Meta:
         model = BasicValidationStrategy
-        fields = ValidationStrategyInitSerializer.Meta.fields + ('cvFolds', 'validSetSize')
-        
+        fields = ValidationStrategyInitSerializer.Meta.fields + ('cvFolds', 'dataSplit')
+
 class BasicValidationStrategySerializer(BasicValidationStrategyInitSerializer):
     metrics = ModelPerformanceMetricSerializer(many=True)
     
@@ -158,7 +159,7 @@ class TrainingStrategyInitSerializer(TrainingStrategySerializer):
             validationStrategy = BasicValidationStrategy.objects.create(
                 trainingStrategy = instance,
                 cvFolds=strat_data['cvFolds'],
-                validSetSize=strat_data['validSetSize']
+                dataSplit=strat_data['dataSplit'],
             )
             validationStrategy.metrics.set(strat_data['metrics'])
             validationStrategy.save()
@@ -244,3 +245,12 @@ class ModelSerializer(serializers.HyperlinkedModelSerializer):
         instance.build = validated_data["build"]
         return instance
 
+class DataSplitSerializer(serializers.HyperlinkedModelSerializer):
+    class Meta:
+        model = DataSplit
+        fields = ('id',)
+
+class RandomSplitSerializer(DataSplitSerializer):
+    class Meta:
+        model = RandomSplit
+        fields = DataSplitSerializer.Meta.fields + ('testSize', 'randomSeed')

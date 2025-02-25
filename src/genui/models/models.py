@@ -283,6 +283,12 @@ class ModelPerformanceMetric(ImportableModelComponent):
     def __str__(self):
         return '%s object (%s)' % (self.__class__.__name__, self.name)
 
+class DataSplit(PolymorphicModel):
+    pass
+
+class RandomSplit(DataSplit):
+    testSize = models.FloatField(blank=False)
+    randomSeed = models.IntegerField(blank=True, default=42)
 
 class ValidationStrategy(PolymorphicModel):
     metrics = models.ManyToManyField(ModelPerformanceMetric)
@@ -298,13 +304,12 @@ class CV(ValidationStrategy):
 
 
 class ValidationSet(ValidationStrategy):
-    validSetSize = models.FloatField(blank=False)
+    dataSplit = models.ForeignKey(DataSplit, null=True, on_delete=models.CASCADE)  # TODO: add validation for the split type or default to RandomSplit
 
     class Meta:
         abstract = True
 
-# ako je ta basic si vytvorim validation a cv , pro kazdu abstraktnu si vytvorim 
-# prislušnú konkretnu pre testovanie
+
 class BasicValidationStrategy(ValidationSet, CV):
     pass
 

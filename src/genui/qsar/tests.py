@@ -9,8 +9,9 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 from genui.compounds.models import ActivityTypes, ActivityUnits
 from genui.compounds.extensions.chembl.tests import CompoundsMixIn
-from genui.qsar.models import QSARModel, DescriptorGroup, ModelActivitySet, TrainingStrategy
-from genui.models.models import ModelPerformance, Algorithm, AlgorithmMode, ModelFile, ModelPerformanceMetric, BasicValidationStrategy
+from genui.qsar.models import QSARModel, DescriptorGroup, ModelActivitySet
+from genui.models.models import ModelPerformance, Algorithm, AlgorithmMode, ModelFile, ModelPerformanceMetric, \
+    BasicValidationStrategy, RandomSplit
 from .genuimodels import builders
 
 
@@ -42,7 +43,8 @@ class QSARModelInit(CompoundsMixIn):
             algorithm=None,
             parameters=None,
             descriptors=None,
-            metrics=None
+            metrics=None,
+            dataSplit=None
     ):
         """
         Create a test QSAR model with specified parameters.
@@ -79,6 +81,10 @@ class QSARModelInit(CompoundsMixIn):
                 ModelPerformanceMetric.objects.get(name="MCC"),
                 ModelPerformanceMetric.objects.get(name="ROC"),
             ]
+        if not dataSplit:
+            dataSplit = RandomSplit.objects.create(
+                testSize=0.2
+            )
 
         post_data = {
             "name": "Test Model",
@@ -97,8 +103,8 @@ class QSARModelInit(CompoundsMixIn):
                 "activityType": activityType.id,
                 "validationStrategies": [{
                     "resourcetype": "BasicValidationStrategy",
+                    "dataSplit": dataSplit.id,
                     "cvFolds": 3,
-                    "validSetSize": 0.2,
                     "metrics": [
                         x.id for x in metrics
                     ]
@@ -294,10 +300,13 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         model = self.createTestQSARModel()
         
         # Add a second validation strategy
+        randomSplit = RandomSplit.objects.create(
+            testSize=0.2
+        )
         second_strategy = BasicValidationStrategy.objects.create(
             trainingStrategy=model.trainingStrategy,
             cvFolds=5,
-            validSetSize=0.2
+            dataSplit=randomSplit,
         )
         second_strategy.metrics.set(ModelPerformanceMetric.objects.filter(name__in=["R2", "MSE"]))
         model.trainingStrategy.validationStrategies.add(second_strategy)
@@ -322,7 +331,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         model = self.createTestQSARModel()
         validation_strategy = model.trainingStrategy.validationStrategies.first()
         self.assertEqual(validation_strategy.cvFolds, 3)
-        self.assertEqual(validation_strategy.validSetSize, 0.2)
+        self.assertEqual(validation_strategy.dataSplit.testSize, 0.2)
         self.assertEqual(set(validation_strategy.metrics.all()), set(ModelPerformanceMetric.objects.filter(name__in=["MCC", "ROC"]))
         )
 
@@ -358,4 +367,20 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         validation_strategy.metrics.set(metrics)
         validation_strategy.save()
         self.assertEqual(set(validation_strategy.metrics.all()), set(metrics))
-        
+
+    def test_change_data_split(self):
+        model = self.createTestQSARModel()
+        validation_strategy = model.trainingStrategy.validationStrategies.first()
+        validation_strategy.dataSplit.delete()
+        new_split = RandomSplit.objects.create(
+            testSize=0.3,
+            randomSeed=314,
+        )
+        validation_strategy.dataSplit = new_split
+        validation_strategy.save()
+        self.assertEqual(model.trainingStrategy.validationStrategies.first().dataSplit.testSize, 0.3)
+        self.assertEqual(model.trainingStrategy.validationStrategies.first().dataSplit.randomSeed, 314)
+
+    def test_change_algorithm(self):
+        model = self.createTestQSARModel()
+        alg = Algorithm.objects.get(name="QSPRPredScikitModel") # TODO: change this to a different algorithm

@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from genui.models.models import AlgorithmMode
 from genui.models.views import ModelViewSet, AlgorithmViewSet, MetricsViewSet, PredictMixIn
 from genui.qsar.genuimodels.builders import BasicQSARModelBuilder
-from genui.qsar.genuimodels.bases import Algorithm
+from genui.models.genuimodels.bases import Algorithm
 from . import models
 from . import serializers
 from .tasks import buildQSARModel, predictWithQSARModel

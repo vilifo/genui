@@ -17,6 +17,7 @@ from pandas import DataFrame, Series
 from django.core.files.base import ContentFile
 
 from genui.models import models
+from genui.utils.exceptions import GenUIException
 from genui.utils.inspection import findSubclassByID, importFromPackage
 from genui.models.models import ModelFile
 
@@ -247,7 +248,7 @@ class ValidationMetric(ABC):
                     **kwargs
                 )
 
-class ModelBuilder(ABC):
+class ModelBuilder(ABC):  # TODO: make more abstract
 
     @classmethod
     def getDjangoModel(cls, corePackage=None, update=False):
@@ -441,8 +442,10 @@ class PredictionMixIn:
         if self.model:
             return self.model.predict(X)
         else:
-            raise Exception("The model is not trained or loaded. Invalid call to 'predict'.") # TODO: throw a more specific exception
+            raise ModelNotFittedException("The model is not trained or loaded. Invalid call to 'predict'.") # TODO: throw a more specific exception
 
+class ModelNotFittedException(GenUIException):
+    pass
 
 class CompleteBuilder(PredictionMixIn, ValidationMixIn, ProgressMixIn, ModelBuilder, ABC):
-    pass
+    pass  # TODO: Discard this class and move the mixins to the QSAR module

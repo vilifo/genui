@@ -12,7 +12,7 @@ from genui.compounds.serializers import MolSetSerializer, ActivitySetSerializer,
     ActivityUnitsSerializer
 from genui.models.serializers import TrainingStrategySerializer, ModelSerializer, \
     TrainingStrategyInitSerializer, BasicValidationStrategy, \
-        ValidationStrategyPolymorphicSerializer
+    DataSplitSerializer
 from . import models
 
 class DescriptorGroupSerializer(serializers.HyperlinkedModelSerializer):
@@ -110,7 +110,7 @@ class QSARModelInitSerializer(QSARModelSerializer):
             validationStrategy = BasicValidationStrategy.objects.create(
                 trainingStrategy=trainingStrategy,
                 cvFolds=vs_data['cvFolds'],
-                validSetSize=vs_data['validSetSize']
+                dataSplit=vs_data['dataSplit'],
             )
             validationStrategy.metrics.set(vs_data['metrics'])
             validationStrategy.save()
@@ -136,3 +136,62 @@ class ModelActivitySetSerializer(ActivitySetSerializer):
         model = models.ModelActivitySet
         fields = ActivitySetSerializer.Meta.fields + ('model', 'taskID')
         read_only_fields = ActivitySetSerializer.Meta.read_only_fields + ('taskID', 'model', 'project')
+
+class BootstrapSplitSerializer(DataSplitSerializer):
+    split = serializers.PrimaryKeyRelatedField(many=False, queryset=models.DataSplit.objects.all())
+
+    class Meta:
+        model = models.BootstrapSplit
+        fields = DataSplitSerializer.Meta.fields + ('nBootstraps', 'randomSeed', 'split')
+
+class TemporalSplitSerializer(DataSplitSerializer):
+
+    class Meta:
+        model = models.TemporalSplit
+        fields = DataSplitSerializer.Meta.fields + ('timeSplit', 'timeProp')
+
+class MoleculeClustersSerializer(serializers.HyperlinkedModelSerializer):
+
+    class Meta:
+        model = models.MoleculeClusters
+        fields = ('id',)
+
+class RandomClustersSerializer(MoleculeClustersSerializer):
+    IDProp = serializers.CharField(max_length=128, required=False)
+    nClusters = serializers.IntegerField(required=False, min_value=1)
+
+    class Meta:
+        model = models.RandomClusters
+        fields = MoleculeClustersSerializer.Meta.fields + ('seed', 'nClusters', 'IDProp')
+
+class ScaffoldClustersSerializer(MoleculeClustersSerializer):
+    IDProp = serializers.CharField(max_length=128, required=False)
+
+    class Meta:
+        model = models.ScaffoldClusters
+        fields = MoleculeClustersSerializer.Meta.fields + ('scaffold', 'IDProp')
+
+class FPSimilarityClustersSerializer(MoleculeClustersSerializer):
+    FPCalculator = serializers.PrimaryKeyRelatedField(many=False, queryset=models.DescriptorGroup.objects.all())
+    IDProp = serializers.CharField(max_length=128, required=False)
+
+    class Meta:
+        model = models.FPSimilarityClusters
+        fields = MoleculeClustersSerializer.Meta.fields + ('FPCalculator', 'IDProp')
+
+class FPSimilarityMaxMinClustersSerializer(FPSimilarityClustersSerializer):
+    seed = serializers.IntegerField(required=False)
+    nClusters = serializers.IntegerField(required=False, min_value=1)
+    # initialCentroids = serializers.PrimaryKeyRelatedField(many=True, queryset=models.Molecule.objects.all(), required=False)
+
+    class Meta:
+        model = models.FPSimilarityMaxMinClusters
+        fields = FPSimilarityClustersSerializer.Meta.fields + ('seed', 'nClusters', 'initialCentroids')
+
+
+class FPSimilarityLeaderPickerClustersSerializer(FPSimilarityClustersSerializer):
+    similarityThreshold = serializers.FloatField(required=True)
+
+    class Meta:
+        model = models.FPSimilarityLeaderPickerClusters
+        fields = FPSimilarityClustersSerializer.Meta.fields + ('similarityThreshold',)

@@ -7,11 +7,10 @@ On: 14-01-20, 10:16
 from abc import ABC, abstractmethod
 
 from genui.utils.inspection import findSubclassByID, importFromPackage
-from genui.compounds.models import Molecule, ActivityTypes, ActivitySet
-from genui.models.genuimodels.bases import Algorithm, CompleteBuilder
+from genui.compounds.models import Molecule
 from genui.qsar import models
 import pandas as pd
-from pandas import DataFrame, Series
+from pandas import DataFrame
 
 
 class DescriptorCalculator(ABC):
@@ -86,49 +85,3 @@ class DescriptorBuilderMixIn:
             temp.columns = [f"{desc_class.group_name}_{x}" for x in temp.columns]
             self.X = pd.concat([self.X, temp], axis=1)
         return self.X
-
-class QSARModelBuilder(DescriptorBuilderMixIn, CompleteBuilder):
-
-    def getX(self) -> DataFrame:
-        return self.X
-
-    def getY(self) -> Series:
-        return self.y
-
-    def saveActivities(self):
-        if not self.getY():
-            activity_set = ActivitySet.objects.get(pk=self.training.activitySet.id)
-            activity_type = self.training.activityType
-            if not activity_set:
-                raise Exception("No activity set specified.")
-            if not activity_type:
-                raise Exception("No activity type specified.")
-
-            compounds, activities, units = activity_set.cleanForModelling(activity_type)
-            if not len(compounds) == len(activities):
-                raise Exception(f'Number of compounds in a QSAR model ({len(compounds)}) is different from the set of activities assigned to them ({len(activities)}). Something went wrong when the data was cleaned for modeling.')
-            activities = Series(activities)
-
-            # use the activity threshold for classifications
-            if self.training.mode.name == Algorithm.CLASSIFICATION:
-                activity_thrs = self.training.activityThreshold
-                if activity_thrs is None:
-                    raise Exception('No activity threshold specified for classification model.')
-                activities = activities.apply(lambda x : 1 if x >= activity_thrs else 0)
-
-                if not self.instance.predictionsType:
-                    self.instance.predictionsType = ActivityTypes.objects.get_or_create(
-                        value="Active Probability"
-                    )[0]
-
-            if not self.instance.predictionsType:
-                self.instance.predictionsType = activity_type
-            if not self.instance.predictionsUnits:
-                self.instance.predictionsUnits = units
-
-            self.instance.save()
-            self.y = activities
-            return self.y, compounds
-
-    def populateActivitySet(self, aset : models.ModelActivitySet):
-        raise NotImplementedError(f"Every QSAR model builder has to implement the {self.populateActivitySet.__name__} method.")
