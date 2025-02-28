@@ -253,4 +253,4 @@ class DataSplitSerializer(serializers.HyperlinkedModelSerializer):
 class RandomSplitSerializer(DataSplitSerializer):
     class Meta:
         model = RandomSplit
-        fields = DataSplitSerializer.Meta.fields + ('testSize', 'randomSeed')
+        fields = DataSplitSerializer.Meta.fields + ('testFraction', 'seed')

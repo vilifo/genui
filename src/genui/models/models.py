@@ -287,8 +287,8 @@ class DataSplit(PolymorphicModel):
     pass
 
 class RandomSplit(DataSplit):
-    testSize = models.FloatField(blank=False)
-    randomSeed = models.IntegerField(blank=True, default=42)
+    testFraction = models.FloatField(blank=False)
+    seed = models.IntegerField(blank=True, default=42)
 
 class ValidationStrategy(PolymorphicModel):
     metrics = models.ManyToManyField(ModelPerformanceMetric)
@@ -304,7 +304,7 @@ class CV(ValidationStrategy):
 
 
 class ValidationSet(ValidationStrategy):
-    dataSplit = models.ForeignKey(DataSplit, null=True, on_delete=models.CASCADE)  # TODO: add validation for the split type or default to RandomSplit
+    dataSplit = models.ForeignKey(DataSplit, null=True, on_delete=models.CASCADE)
 
     class Meta:
         abstract = True

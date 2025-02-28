@@ -19,7 +19,7 @@ class DescriptorGroupSerializer(serializers.HyperlinkedModelSerializer):
 
     class Meta:
         model = models.DescriptorGroup
-        fields = ('id', 'name',)
+        fields = ('id', 'name', 'arguments')
 
 class QSARTrainingStrategySerializer(TrainingStrategySerializer):
     descriptors = DescriptorGroupSerializer(many=True)
@@ -142,7 +142,7 @@ class BootstrapSplitSerializer(DataSplitSerializer):
 
     class Meta:
         model = models.BootstrapSplit
-        fields = DataSplitSerializer.Meta.fields + ('nBootstraps', 'randomSeed', 'split')
+        fields = DataSplitSerializer.Meta.fields + ('nBootstraps', 'seed', 'split')
 
 class TemporalSplitSerializer(DataSplitSerializer):
 

@@ -83,7 +83,7 @@ class QSARModelInit(CompoundsMixIn):
             ]
         if not dataSplit:
             dataSplit = RandomSplit.objects.create(
-                testSize=0.2
+                testFraction=0.2
             )
 
         post_data = {
@@ -301,7 +301,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         
         # Add a second validation strategy
         randomSplit = RandomSplit.objects.create(
-            testSize=0.2
+            testFraction=0.2
         )
         second_strategy = BasicValidationStrategy.objects.create(
             trainingStrategy=model.trainingStrategy,
@@ -331,7 +331,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         model = self.createTestQSARModel()
         validation_strategy = model.trainingStrategy.validationStrategies.first()
         self.assertEqual(validation_strategy.cvFolds, 3)
-        self.assertEqual(validation_strategy.dataSplit.testSize, 0.2)
+        self.assertEqual(validation_strategy.dataSplit.testFraction, 0.2)
         self.assertEqual(set(validation_strategy.metrics.all()), set(ModelPerformanceMetric.objects.filter(name__in=["MCC", "ROC"]))
         )
 
@@ -373,13 +373,29 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         validation_strategy = model.trainingStrategy.validationStrategies.first()
         validation_strategy.dataSplit.delete()
         new_split = RandomSplit.objects.create(
-            testSize=0.3,
-            randomSeed=314,
+            testFraction=0.3,
+            seed=314,
         )
         validation_strategy.dataSplit = new_split
         validation_strategy.save()
-        self.assertEqual(model.trainingStrategy.validationStrategies.first().dataSplit.testSize, 0.3)
-        self.assertEqual(model.trainingStrategy.validationStrategies.first().dataSplit.randomSeed, 314)
+        self.assertEqual(model.trainingStrategy.validationStrategies.first().dataSplit.testFraction, 0.3)
+        self.assertEqual(model.trainingStrategy.validationStrategies.first().dataSplit.seed, 314)
+
+    def test_qsprpred_fingerprints(self):
+        fingerprints = [
+            {"fingerprint": "MorganFP", "radius": 2, "nBits": 2048,},
+            {"fingerprint": "RDKitMACCSFP",},
+            {"fingerprint": "MaccsFP", "nBits": 167},
+            {"fingerprint": "AvalonFP", "nBits": 1024},
+            {"fingerprint": "TopologicalFP", "nBits": 2048},
+            {"fingerprint": "AtomPairFP", "nBits": 2048},
+            {"fingerprint": "RDKitFP", "minPath": 1, "maxPath": 7, "nBits": 2048},
+            {"fingerprint": "PatternFP", "nBits": 2048},
+            {"fingerprint": "LayeredFP", "minPath": 1, "maxPath": 7, "nBits": 2048},
+        ]
+        model = self.createTestQSARModel(
+            descriptors=[DescriptorGroup.objects.create(
+                name="QSPRPRED_FINGERPRINT", arguments=json.dumps(fingerprint)) for fingerprint in fingerprints])
 
     def test_change_algorithm(self):
         model = self.createTestQSARModel()

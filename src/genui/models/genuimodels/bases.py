@@ -335,15 +335,8 @@ class ModelBuilder(ABC):  # TODO: make more abstract
         self._model = val
 
     @abstractmethod
-    def getY(self) -> Series:
-        pass
-
-    @abstractmethod
-    def getX(self) -> DataFrame:
-        pass
-
     def build(self) -> models.Model:
-        self.model.fit(self.getX(), self.getY())
+        # self.model.fit(self.getX(), self.getY())
         for validation in self.validations:
             self.validate(validation)
         # CHANGE: Now applying multiple validation strategies during model building.
@@ -351,6 +344,7 @@ class ModelBuilder(ABC):  # TODO: make more abstract
         self.saveFile()
         return self.instance
 
+    @abstractmethod
     def validate(self, validation_strategy):
         # Implement validation logic here
         pass
@@ -446,6 +440,3 @@ class PredictionMixIn:
 
 class ModelNotFittedException(GenUIException):
     pass
-
-class CompleteBuilder(PredictionMixIn, ValidationMixIn, ProgressMixIn, ModelBuilder, ABC):
-    pass  # TODO: Discard this class and move the mixins to the QSAR module

@@ -5,14 +5,15 @@ from genui.compounds.models import MolSet, ActivitySet, Activity, ActivityTypes,
 from genui.models.models import Model, TrainingStrategy, DataSplit
 
 from genui.models.models import ImportableModelComponent
+from genui.utils.inspection import get_non_abstract_classes_from_module
 
-QSPRPredScaffoldAlgorithms = [("BemisMurckoRDKit", "BemisMurckoRDKit"),
-                              ("BemisMurcko", "BemisMurcko")]
+QSPRPredScaffoldAlgorithms = [(fun, fun) for fun in get_non_abstract_classes_from_module('qsprpred.data.chem.scaffolds')]
 
 
 class DescriptorGroup(ImportableModelComponent):
-    name = models.CharField(max_length=128, blank=False, unique=True)
+    name = models.CharField(max_length=128, blank=False)
     corePackage = models.CharField(blank=False, null=False, default='genui.qsar.genuimodels', max_length=1024)
+    arguments = models.JSONField(blank=False, null=False, default=dict)
 
     def __str__(self):
         return '%s object (%s)' % (self.__class__.__name__, self.name)
@@ -62,7 +63,7 @@ class FPSimilarityLeaderPickerClusters(FPSimilarityClusters):
 class BootstrapSplit(DataSplit):
     split = models.ForeignKey(DataSplit, null=False, on_delete=models.CASCADE, related_name="bootstrappedSplits")
     nBootstraps = models.IntegerField(blank=False)
-    randomSeed = models.IntegerField(blank=True, default=42)
+    seed = models.IntegerField(blank=True, default=42)
 
 
 class TemporalSplit(DataSplit):
@@ -70,27 +71,27 @@ class TemporalSplit(DataSplit):
     timeProp = models.CharField(max_length=128, blank=False)
 
 class ClusterSplit(DataSplit):
-    testSize = models.FloatField(blank=False)
+    testFraction = models.FloatField(blank=False)
     nFolds = models.IntegerField(blank=False)
     customTestList = models.ManyToManyField(Molecule, blank=True)
-    randomSeed = models.IntegerField(blank=True, default=42)
+    seed = models.IntegerField(blank=True, default=42)
     clustering = models.ForeignKey(MoleculeClusters, null=False, on_delete=models.CASCADE)
 
 
 class GBMTDataSplit(DataSplit):
     clustering = models.ForeignKey(MoleculeClusters, null=False, on_delete=models.CASCADE)
-    testSize = models.FloatField(blank=False)
+    testFraction = models.FloatField(blank=False)
     nFolds = models.IntegerField(blank=False)
     customTestList = models.ManyToManyField(Molecule, blank=True)
 
 
 class GBMTRandomSplit(GBMTDataSplit):
-    randomSeed = models.IntegerField(blank=True, default=42)
+    seed = models.IntegerField(blank=True, default=42)
     nInitialClusters = models.IntegerField(blank=True)
 
 
 class ScaffoldSplit(DataSplit):
     scaffold = models.CharField(max_length=128, blank=False, default="BemisMurckoRDKit", choices=QSPRPredScaffoldAlgorithms)
-    testSize = models.FloatField(blank=False)
+    testFraction = models.FloatField(blank=False)
     nFolds = models.IntegerField(blank=False)
     customTestList = models.ManyToManyField(Molecule, blank=True)

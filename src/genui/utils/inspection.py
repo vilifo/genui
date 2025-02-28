@@ -10,7 +10,6 @@ import inspect
 import sys
 
 from django.urls import path, include
-
 from genui import apps
 
 
@@ -171,3 +170,13 @@ def discover_extensions_urlpatterns(parent):
         if urls:
             ret.extend(urls.urlpatterns)
     return ret
+
+def get_non_abstract_classes_from_module(module):
+    if isinstance(module, str):
+        module = importlib.import_module(module)
+
+    classes = []
+    for name, obj in inspect.getmembers(module):
+        if inspect.isclass(obj) and not inspect.isabstract(obj) and obj.__module__ == module.__name__:
+            classes.append(name)
+    return classes

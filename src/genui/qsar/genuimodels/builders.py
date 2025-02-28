@@ -6,12 +6,14 @@ On: 15-01-20, 12:55
 """
 # CHANGE: Added import for traceback to handle exceptions
 import traceback
-
+import inspect
 import numpy as np
+import re
+from abc import ABC
 import pandas as pd
 from rdkit import Chem
 from pandas import DataFrame, Series
-from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
+from sklearn.model_selection import KFold, StratifiedKFold
 
 from django.core.exceptions import ImproperlyConfigured
 from django.core.files.base import ContentFile
@@ -19,7 +21,7 @@ from django.core.files.base import ContentFile
 from genui.models.models import ModelFile
 # CHANGE: Updated imports to use more specific model references
 from genui.compounds.models import ActivityTypes, ActivitySet
-from genui.models.genuimodels.bases import Algorithm, CompleteBuilder
+from genui.models.genuimodels.bases import Algorithm, PredictionMixIn, ValidationMixIn, ProgressMixIn, ModelBuilder
 from genui.models import models as core_models
 from genui.qsar import models as qsar_models
 from .bases import DescriptorBuilderMixIn
@@ -27,13 +29,20 @@ from .bases import DescriptorBuilderMixIn
 from qsprpred.data.sampling import splits
 from qsprpred.data import QSPRDataset, MoleculeTable
 
-SPLIT_PARAMETERS = {"RandomSplit": ["testSize", "randomSeed"]}
+def camel_to_snake(name):
+    return re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
 
-class BasicQSARModelBuilder(DescriptorBuilderMixIn, CompleteBuilder):
+def snake_to_camel(name):
+    words = name.split('_')
+    return words[0] + ''.join(word.capitalize() for word in words[1:])
+
+
+class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationMixIn, ProgressMixIn, ModelBuilder, ABC):
     # CHANGE: Updated __init__ method to handle multiple validation strategies
     def __init__(self, instance: qsar_models.Model, progress=None, onFitCall=None, validations=None):
         super().__init__(instance, progress, onFitCall)
         self.validations = validations if validations and len(validations) > 0 else self.instance.trainingStrategy.validationStrategies.all()
+        self.dataset = None
 
     def build(self) -> qsar_models.QSARModel:
         if not self.validations:
@@ -59,14 +68,17 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, CompleteBuilder):
         self.recordProgress()
         self.calculateDescriptors(mols)
         # TODO: QSPRDataset should be used here also add as dataset to the builder itself
-        X = self.getX()
-        y = self.getY()
+        X = self.X
+        y = self.y
 
         for validation in self.validations:
             if hasattr(validation, 'dataSplit') and hasattr(validation, 'cvFolds'):
                 split_name = validation.dataSplit.__class__.__name__
                 split_instance = getattr(splits, split_name)
-                split_instance = split_instance(test_fraction=validation.dataSplit.testSize, seed=validation.dataSplit.randomSeed)
+                split_params = {param: getattr(validation.dataSplit, snake_to_camel(param)) for param in
+                                inspect.signature(split_instance.__init__).parameters if
+                                hasattr(validation.dataSplit, snake_to_camel(param))}
+                split_instance = split_instance(**split_params)
                 train, valid = [x for x in split_instance.split(X, y)][0]
 
                 X_train, y_train = X.iloc[train], y.iloc[train]
@@ -206,7 +218,6 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, CompleteBuilder):
                 self.errors.append(exp)
                 traceback.print_exc()
                 continue
-
 
     def getX(self) -> DataFrame:
         return self.X
