@@ -195,3 +195,8 @@ class FPSimilarityLeaderPickerClustersSerializer(FPSimilarityClustersSerializer)
     class Meta:
         model = models.FPSimilarityLeaderPickerClusters
         fields = FPSimilarityClustersSerializer.Meta.fields + ('similarityThreshold',)
+        
+class QSPRPredSklearnModelSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    type = serializers.CharField()
+    params = serializers.DictField(child=serializers.CharField(), required=False)

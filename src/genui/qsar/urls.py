@@ -28,6 +28,7 @@ routes = [
     , path('models/<int:pk>/tasks/started/', ModelTasksView.as_view(started_only=True, model_class=QSARModel))
     , path('models/<int:pk>/performance/', ModelPerformanceListView.as_view())
     , path('models/<int:pk>/files/', ModelFileView.as_view(model_class=QSARModel), name="qsar-model-files-list")
+    , path('models/qsprpred/sklearn/', views.QSPRPredSklearnModelViewSet.as_view(({'get': 'list'})))
 ]
 
 urlpatterns = [

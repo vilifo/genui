@@ -72,7 +72,7 @@ class QSARModelInit(CompoundsMixIn):
             algorithm = Algorithm.objects.get(name="RandomForest")
         if not parameters:
             parameters = {
-                "n_estimators": 150
+                "n_estimators": 150,
             }
         if not descriptors:
             descriptors = [DescriptorGroup.objects.get(name="MORGANFP")]
@@ -394,9 +394,19 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             {"fingerprint": "LayeredFP", "minPath": 1, "maxPath": 7, "nBits": 2048},
         ]
         model = self.createTestQSARModel(
-            descriptors=[DescriptorGroup.objects.create(
-                name="QSPRPRED_FINGERPRINT", arguments=json.dumps(fingerprint)) for fingerprint in fingerprints])
+            descriptors=[DescriptorGroup.objects.get_or_create(
+                name="QSPRPRED_FINGERPRINT", arguments=fingerprint) for fingerprint in fingerprints])
+
+    def test_qsprpred_descriptor_set(self):
+        fingerprints = [
+            {"descriptor_set": "DrugExPhyschem"},
+            {"descriptor_set": "RDKitDescs",},
+        ]
+        model = self.createTestQSARModel(
+            descriptors=[DescriptorGroup.objects.get_or_create(
+                name="QSPRPRED_DESCRIPTOR_SET", arguments=fingerprint) for fingerprint in fingerprints])
 
     def test_change_algorithm(self):
-        model = self.createTestQSARModel()
-        alg = Algorithm.objects.get(name="QSPRPredScikitModel") # TODO: change this to a different algorithm
+        alg = Algorithm.objects.get(name="QSPRPredScikitModel")
+        parameters = {"alg": "KNeighborsClassifier", "name": "TestModel"}
+        model = self.createTestQSARModel(algorithm=alg, parameters=parameters)

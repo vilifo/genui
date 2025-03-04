@@ -51,34 +51,51 @@ class QSPRPredFingerprintCalculator(bases.DescriptorCalculator):
         super().__init__(builder)
         self.fingerprint_instance = None
 
-    def __call__(self, smiles, **kwargs):
+    def __call__(self, smiles, **kwargs): # TODO: add error handling
         if not self.fingerprint_instance:
             fp_name = kwargs["fingerprint"]
             kwargs.pop("fingerprint")
             self.fingerprint_instance = getattr(fp_module, fp_name)(**kwargs)
         mols = self.smilesToMol(smiles)
         mols = self.fingerprint_instance.prepMols(mols)
-        return self.fingerprint_instance.getDescriptors(mols, props={})
+        descriptors = self.fingerprint_instance.getDescriptors(mols, props={})
+        return pd.DataFrame(descriptors, columns=[f"{self.fingerprint_instance.__class__.__name__}_{i}" for i in range(descriptors.shape[1])])
 
     @staticmethod
     def get_endpoints():
         return get_non_abstract_classes_from_module(fp_module)
 
+    @staticmethod
+    def smilesToMol(smiles):
+        return [Chem.MolFromSmiles(s) for s in smiles]
+
 
 class QSPRPredDescriptorSetCalculator(bases.DescriptorCalculator):
     group_name = "QSPRPRED_DESCRIPTOR_SET"
 
-    def __init__(self, builder, descriptor_set):
+    def __init__(self, builder):
         super().__init__(builder)
         self.descriptor_set_instance = None
 
-    def __call__(self, smiles, **kwargs):
+    def __call__(self, smiles, **kwargs): # TODO: add error handling
         if not self.descriptor_set_instance:
             set_name = kwargs["descriptor_set"]
             kwargs.pop("descriptor_set")
             self.descriptor_set_instance = getattr(descriptors_set_module, set_name)(**kwargs)
-        return self.descriptor_set_instance(smiles)
+        if "descriptor_list" in kwargs:
+            self.descriptor_set_instance.descriptors = kwargs["descriptor_list"]
+        mols = self.smilesToMol(smiles)
+        descriptors = self.descriptor_set_instance.getDescriptors(mols, props={})
+        return pd.DataFrame(descriptors, columns=self.descriptor_set_instance.descriptors)
 
     @staticmethod
     def get_endpoints():
         return get_non_abstract_classes_from_module(descriptors_set_module)
+
+    @staticmethod
+    def get_descriptors_names(name):
+        return getattr(descriptors_set_module, name)().descriptors
+
+    @staticmethod
+    def smilesToMol(smiles):
+        return [Chem.MolFromSmiles(s) for s in smiles]

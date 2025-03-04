@@ -305,13 +305,9 @@ class ModelBuilder(ABC):  # TODO: make more abstract
         self.onFit = onFit
 
         self.validations = self.training.validationStrategies.all()
-        # CHANGE: Now fetching all validation strategies associated with the training strategy.
-        # This allows for multiple validation approaches per model.
         self.metricClasses = []
         for validation in self.validations:
             self.metricClasses.extend([self.findMetricClass(x.name, x.corePackage) for x in validation.metrics.all() if x])
-        # CHANGE: Collecting metric classes from all validation strategies.
-        # This enables the use of different metrics for each validation strategy.
         self.progress = progress
         self.errors = []
 
@@ -339,8 +335,6 @@ class ModelBuilder(ABC):  # TODO: make more abstract
         # self.model.fit(self.getX(), self.getY())
         for validation in self.validations:
             self.validate(validation)
-        # CHANGE: Now applying multiple validation strategies during model building.
-        # This allows for more comprehensive model evaluation.
         self.saveFile()
         return self.instance
 
@@ -348,8 +342,6 @@ class ModelBuilder(ABC):  # TODO: make more abstract
     def validate(self, validation_strategy):
         # Implement validation logic here
         pass
-    # CHANGE: Added a new method to handle individual validation strategies.
-    # This method should be implemented in subclasses to define specific validation logic.
 
     def saveFile(self):
         if not self.instance.modelFile:

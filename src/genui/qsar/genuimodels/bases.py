@@ -7,6 +7,8 @@ On: 14-01-20, 10:16
 import json
 from abc import ABC, abstractmethod
 
+from qsprpred.data import MoleculeTable
+
 from genui.utils.inspection import findSubclassByID, importFromPackage
 from genui.compounds.models import Molecule
 from genui.qsar import models
@@ -41,8 +43,6 @@ class DescriptorCalculator(ABC):
 
         return ret
 
-    def smilesToMol(self, smiles):  # TODO: Repair this, needs mol instances
-        return [Molecule.objects.get(canonicalSMILES=x) for x in smiles]
 
 class DescriptorBuilderMixIn:
 
@@ -54,7 +54,7 @@ class DescriptorBuilderMixIn:
     def __init__(self, instance: models.Model, progress=None, onFitCall=None):
         super().__init__(instance, progress, onFitCall)
         self.molsets = [self.instance.molset] if hasattr(self.instance, "molset") else self.instance.molsets.all()
-        self.descriptorClasses = {self.findDescriptorClass(x.name, x.corePackage):json.loads(x.arguments) for x in self.training.descriptors.all()}
+        self.descriptorClasses = {self.findDescriptorClass(x.name, x.corePackage):x.arguments for x in self.training.descriptors.all()}
 
         self.X = None
         self.y = None
@@ -63,7 +63,7 @@ class DescriptorBuilderMixIn:
         """
         Calculate descriptors for the given molecules
         and save them as X in this instance. If mols is None,
-        the 'self.mols' or 'self.molsets' (in the order of pereference)
+        the 'self.mols' or 'self.molsets' (in the order of preference)
         attributes will be used to get molecules for the calculation.
 
         :param mols: List of molecules to save as X. Can be either instances of Molecule or smiles strings

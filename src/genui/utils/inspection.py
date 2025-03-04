@@ -5,10 +5,13 @@ Created by: Martin Sicho
 On: 4/30/20, 8:55 AM
 """
 
+import sys
+import pkgutil
 import importlib
 import inspect
-import sys
-
+import sklearn
+from sklearn.base import RegressorMixin, ClassifierMixin
+from abc import ABC
 from django.urls import path, include
 from genui import apps
 
@@ -180,3 +183,38 @@ def get_non_abstract_classes_from_module(module):
         if inspect.isclass(obj) and not inspect.isabstract(obj) and obj.__module__ == module.__name__:
             classes.append(name)
     return classes
+
+def get_sklearn_models():
+    regressors = {}
+    classifiers = {}
+
+    for _, module_name, _ in pkgutil.walk_packages(sklearn.__path__, prefix="sklearn."):
+        try:
+            module = importlib.import_module(module_name)
+            for name, obj in inspect.getmembers(module):
+                if inspect.isclass(obj) and obj.__module__ == module_name:
+                    if (obj not in [RegressorMixin, ClassifierMixin, ABC]
+                            and not inspect.isabstract(obj)
+                            and not obj.__name__.startswith("_")):
+                        if issubclass(obj, RegressorMixin) and obj not in [RegressorMixin, ClassifierMixin]:
+                            regressors[name] = f"{module_name}.{name}"
+                        elif issubclass(obj, ClassifierMixin) and obj not in [RegressorMixin, ClassifierMixin]:
+                            classifiers[name] = f"{module_name}.{name}"
+        except Exception:
+            pass
+
+    return regressors, classifiers
+
+
+def get_model_params(model_class):
+    params = {}
+    module = importlib.import_module(".".join(model_class.rsplit('.')[:-1]))
+    model_class = model_class.rsplit('.')[-1]
+    model_class = getattr(module, model_class)
+    signature = inspect.signature(model_class)
+    for param_name, param in signature.parameters.items():
+        if param.default is inspect.Parameter.empty:
+            params[param_name] = None
+        else:
+            params[param_name] = param.default
+    return params

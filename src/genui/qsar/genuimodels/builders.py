@@ -4,13 +4,14 @@ builders
 Created by: Martin Sicho
 On: 15-01-20, 12:55
 """
-# CHANGE: Added import for traceback to handle exceptions
 import traceback
 import inspect
 import numpy as np
 import re
 from abc import ABC
 import pandas as pd
+from qsprpred.data.descriptors.sets import DataFrameDescriptorSet
+from qsprpred.models import CrossValAssessor
 from rdkit import Chem
 from pandas import DataFrame, Series
 from sklearn.model_selection import KFold, StratifiedKFold
@@ -19,7 +20,6 @@ from django.core.exceptions import ImproperlyConfigured
 from django.core.files.base import ContentFile
 
 from genui.models.models import ModelFile
-# CHANGE: Updated imports to use more specific model references
 from genui.compounds.models import ActivityTypes, ActivitySet
 from genui.models.genuimodels.bases import Algorithm, PredictionMixIn, ValidationMixIn, ProgressMixIn, ModelBuilder
 from genui.models import models as core_models
@@ -27,7 +27,9 @@ from genui.qsar import models as qsar_models
 from .bases import DescriptorBuilderMixIn
 
 from qsprpred.data.sampling import splits
-from qsprpred.data import QSPRDataset, MoleculeTable
+from qsprpred.data import QSPRDataset
+from qsprpred.data.descriptors import fingerprints as fp_module
+from qsprpred.data.descriptors import sets as descriptors_set_module
 
 def camel_to_snake(name):
     return re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
@@ -38,17 +40,14 @@ def snake_to_camel(name):
 
 
 class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationMixIn, ProgressMixIn, ModelBuilder, ABC):
-    # CHANGE: Updated __init__ method to handle multiple validation strategies
     def __init__(self, instance: qsar_models.Model, progress=None, onFitCall=None, validations=None):
         super().__init__(instance, progress, onFitCall)
         self.validations = validations if validations and len(validations) > 0 else self.instance.trainingStrategy.validationStrategies.all()
-        self.dataset = None
 
     def build(self) -> qsar_models.QSARModel:
         if not self.validations:
             raise ImproperlyConfigured("You cannot build a QSAR model without validation strategies.")
-        # CHANGE: Now checking for the presence of validation strategies instead of a single validation strategy.
-        # This ensures that at least one validation strategy is present before building the model.
+
         if not self.molsets:
             raise ImproperlyConfigured("You cannot build a QSAR model without an associated molecule set.")
 
@@ -56,7 +55,7 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
             "Fetching activities...",
             "Calculating descriptors..."
         ]
-        # CHANGE: Generate progress stages for each validation strategy
+
         for validation in self.validations:
             self.progressStages.extend([f"CV fold {x+1}" for x in range(validation.cvFolds)])
         self.progressStages.extend(["Fitting model on the training set...", "Validating on test set..."])
@@ -67,9 +66,16 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
 
         self.recordProgress()
         self.calculateDescriptors(mols)
-        # TODO: QSPRDataset should be used here also add as dataset to the builder itself
+        mols = pd.DataFrame([x.canonicalSMILES for x in mols], columns=["SMILES"])
         X = self.X
-        y = self.y
+        y = pd.DataFrame(self.y, columns=["activity"])
+        if self.training.mode.name == Algorithm.CLASSIFICATION:
+            target_props = {"name": "activity", "task": "SINGLECLASS", "th": [self.training.activityThreshold],}
+        else:
+            target_props = {"name": "activity", "task": "REGRESSION"}
+        dataset = QSPRDataset("Dataset", [target_props],
+                              df=pd.concat([mols, y], axis=1))
+        dataset.prepareDataset(feature_calculators=[DataFrameDescriptorSet(df=pd.concat([X, mols], axis=1), joining_cols=["SMILES"])])
 
         for validation in self.validations:
             if hasattr(validation, 'dataSplit') and hasattr(validation, 'cvFolds'):
@@ -79,10 +85,10 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
                                 inspect.signature(split_instance.__init__).parameters if
                                 hasattr(validation.dataSplit, snake_to_camel(param))}
                 split_instance = split_instance(**split_params)
-                train, valid = [x for x in split_instance.split(X, y)][0]
 
-                X_train, y_train = X.iloc[train], y.iloc[train]
-                X_valid, y_valid = X.iloc[valid], y.iloc[valid]
+                dataset.split(split_instance)
+                X_train, y_train = dataset.X, dataset.y["activity"]
+                X_valid, y_valid = dataset.X_ind, dataset.y_ind["activity"]
 
                 # Perform cross-validation
                 is_regression = self.training.mode.name == Algorithm.REGRESSION
@@ -100,7 +106,6 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
                         fold=i + 1
                     )
 
-                # Validate on the held-out validation set
                 self.fitAndValidate(X_train, y_train, X_valid, y_valid)
 
         # Final model fitting on all data
@@ -177,7 +182,6 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
         assert len(real_predictions) == 0
         return np.array(predictions)
     
-    # CHANGE: Updated to use qsar_models instead of models
     def populateActivitySet(self, aset : qsar_models.ModelActivitySet):
         if not self.instance.predictionsType:
             raise Exception("The activity type for QSAR model predictions is not specified.")
@@ -197,7 +201,6 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
 
         return aset.activities.all()
     
-    # CHANGE: Added new method to handle fitting and validation
     def fitAndValidate(self, X_train, y_train, X_valid, y_valid, y_predicted=None, perfClass=core_models.ModelPerformance, *args, **kwargs):
         if not y_predicted:
             model = self.algorithmClass(self)
@@ -206,7 +209,6 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
         for validation in self.validations:
             self.validate(validation, y_valid, y_predicted, perfClass, *args, **kwargs)
             
-    # CHANGE: Added new method to handle individual validation
     def validate(self, validation_strategy, y_validated, y_predicted, perfClass=core_models.ModelPerformance, *args, **kwargs):
         if not validation_strategy:
             raise ImproperlyConfigured(f"No validation strategy is set for model: {repr(self.instance)}")
@@ -259,5 +261,3 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
             self.instance.save()
             self.y = activities
             return self.y, compounds
-
-            

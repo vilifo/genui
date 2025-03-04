@@ -1,3 +1,5 @@
+import json
+
 from django.db import models
 from polymorphic.models import PolymorphicModel
 
@@ -95,3 +97,8 @@ class ScaffoldSplit(DataSplit):
     testFraction = models.FloatField(blank=False)
     nFolds = models.IntegerField(blank=False)
     customTestList = models.ManyToManyField(Molecule, blank=True)
+
+class QSPRPredSklearnModel(models.Model):
+    name = models.CharField()
+    type = models.CharField()
+    params = models.JSONField()

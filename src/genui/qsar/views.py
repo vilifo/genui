@@ -15,6 +15,7 @@ from . import serializers
 from .tasks import buildQSARModel, predictWithQSARModel
 from genui.utils.extensions.tasks.utils import runTask
 from genui import celery_app
+from genui.utils.inspection import get_sklearn_models, get_model_params
 
 
 class QSARModelViewSet(PredictMixIn, ModelViewSet):
@@ -112,3 +113,18 @@ class QSARMetricsViewSet(MetricsViewSet):
         ret = super().get_queryset()
         modes = AlgorithmMode.objects.filter(name__in=(Algorithm.CLASSIFICATION, Algorithm.REGRESSION))
         return ret.filter(validModes__in=modes)
+
+
+class QSPRPredSklearnModelViewSet(viewsets.ViewSet):
+    queryset = models.QSPRPredSklearnModel.objects.all()
+    serializer_class = serializers.QSPRPredSklearnModelSerializer
+
+    def list(self, request):
+        r, c = get_sklearn_models()
+        data = []
+        for name, cls in r.items():
+            data.append({'name': name, 'type': 'Regressor', 'params': get_model_params(cls)})
+        for name, cls in c.items():
+            data.append({'name': name, 'type': 'Classifier', 'params': get_model_params(cls)})
+        serializer = serializers.QSPRPredSklearnModelSerializer(data, many=True)
+        return Response(serializer.data)

@@ -40,6 +40,6 @@ class RandomForest(bases.Algorithm):
             if is_regression:
                 return self.model.predict(X)
             else:
-                return self.model.predict_proba(X)[:,1]
+                return self.model.predict_proba(X)[:,0]
         else:
             raise Exception("You have to fit the model first.") # TODO: add custom exception
