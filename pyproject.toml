@@ -55,6 +55,7 @@ dependencies = [
     'chembl_structure_pipeline',
     'nvgpu',
     'numpy < 2.0.0',
+    'numpydoc',
     'qsprpred'
 ]
 
