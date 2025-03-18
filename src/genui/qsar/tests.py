@@ -3,6 +3,7 @@ import os
 
 import joblib
 from django.core.exceptions import ImproperlyConfigured
+from qsprpred.models import SklearnModel
 from rest_framework.test import APITestCase
 from django.urls import reverse
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
@@ -69,10 +70,10 @@ class QSARModelInit(CompoundsMixIn):
         if not mode:
             mode = AlgorithmMode.objects.get(name="classification")
         if not algorithm:
-            algorithm = Algorithm.objects.get(name="RandomForest")
+            algorithm = Algorithm.objects.get(name="QSPRPredScikitModel")
         if not parameters:
-            parameters = {
-                "n_estimators": 150,
+            parameters = {"alg": "RandomForestClassifier",
+                          "parameters": json.dumps({"n_estimators": 150,})
             }
         if not descriptors:
             descriptors = [DescriptorGroup.objects.get(name="MORGANFP")]
@@ -213,7 +214,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
 
         path = model.modelFile.path
         model = joblib.load(model.modelFile.path)
-        self.assertTrue(isinstance(model, RandomForestClassifier))
+        self.assertTrue(isinstance(model, SklearnModel))
 
         # get the model via api
         response = self.client.get(reverse('model-list'))
@@ -408,5 +409,5 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
 
     def test_change_algorithm(self):
         alg = Algorithm.objects.get(name="QSPRPredScikitModel")
-        parameters = {"alg": "KNeighborsClassifier", "name": "TestModel"}
+        parameters = {"alg": "KNeighborsClassifier", "parameters": {"n_neighbors": 5}}
         model = self.createTestQSARModel(algorithm=alg, parameters=parameters)

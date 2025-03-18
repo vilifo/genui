@@ -59,9 +59,14 @@ class Algorithm(ABC):
     @classmethod
     def getFileFormats(cls, attach_to=None):
         formats = [models.ModelFileFormat.objects.get_or_create(
-            fileExtension=".joblib.gz",
-            description="A compressed joblib file."
-        )[0]]
+                    fileExtension=".joblib.gz",
+                    description="A compressed joblib file."
+                    )[0],
+                   models.ModelFileFormat.objects.get_or_create(
+                       fileExtension=".tar.gz",
+                       description="A tar archive file."
+                    )[0]
+                   ]
 
         if attach_to:
             cls.attachToInstance(attach_to, formats, attach_to.fileFormats)
@@ -248,7 +253,7 @@ class ValidationMetric(ABC):
                     **kwargs
                 )
 
-class ModelBuilder(ABC):  # TODO: make more abstract
+class ModelBuilder(ABC):
 
     @classmethod
     def getDjangoModel(cls, corePackage=None, update=False):

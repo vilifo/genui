@@ -4,6 +4,7 @@ serializers
 Created by: Martin Sicho
 On: 13-01-20, 11:07
 """
+import json
 
 from rest_framework import serializers
 
@@ -14,6 +15,8 @@ from genui.models.serializers import TrainingStrategySerializer, ModelSerializer
     TrainingStrategyInitSerializer, BasicValidationStrategy, \
     DataSplitSerializer
 from . import models
+from ..utils.inspection import get_model_params
+
 
 class DescriptorGroupSerializer(serializers.HyperlinkedModelSerializer):
 
@@ -81,6 +84,18 @@ class QSARModelInitSerializer(QSARModelSerializer):
         if not data["build"] and ("predictionsType" not in data or "predictionsUnits" not in data or not data["predictionsType"]):
             raise serializers.ValidationError("You have to specify the type and units of the predicted values if you are not building the model from existing data. Both 'predictionsType' and 'predictionsUnits' must be specified. You can set 'predictionsUnits' to 'null' if the model output variable has no dimension.")
 
+        if tr_strat_data["algorithm"].name == 'QSPRPredScikitModel':
+            params = tr_strat_data['parameters']
+            alg = params['alg']
+            if "Classifier" in alg and tr_strat_data['mode'].name == "regression":
+                raise serializers.ValidationError("You cannot use a classifier algorithm for a regression model.")
+            if "Regressor" in alg and tr_strat_data['mode'].name == "classification":
+                raise serializers.ValidationError("You cannot use a regressor algorithm for a classification model.")
+            parameters = json.loads(params['parameters'])
+            alg_parameters = get_model_params(alg)
+            for param in parameters:
+                if not param in alg_parameters:
+                    raise serializers.ValidationError(f"Parameter {param} is not valid for the selected algorithm {alg}.")
         return ret
 
     def create(self, validated_data, **kwargs):

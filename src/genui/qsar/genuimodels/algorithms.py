@@ -1,34 +1,24 @@
+import ml2json
 from pandas import DataFrame, Series
 from qsprpred.models import SklearnModel
+import tempfile
+import tarfile
+import os
 import importlib
+import json
 
 from genui.models.models import ModelParameter
 from genui.models.genuimodels.bases import Algorithm, ModelNotFittedException
-from genui.utils.inspection import get_sklearn_models
-
-R, C = get_sklearn_models()
-MODELS = R | C
+from genui.utils.inspection import SKLEARN_MODELS
 
 class QSPRPredScikitModel(Algorithm): # TODO: testy upload modelu ...
     name = "QSPRPredScikitModel"
     parameters = {
-        "base_dir": { # TODO:interni server logika - složka models, metafile + id, zip adresáře mainfile
-            "type": ModelParameter.STRING,
-            "defaultValue": "models"
-        },
         "alg": {
             "type": ModelParameter.STRING,
             "defaultValue": "DummyClassifier"
         },
-        "name": {
-            "type": ModelParameter.STRING,
-            "defaultValue": "DummyName"
-        },
-        "random_state": {
-            "type": ModelParameter.INTEGER,
-            "defaultValue": 42
-        },
-        "parameters": { # TODO: parameter check v serializaci
+        "parameters": {
             "type": ModelParameter.STRING,
             "defaultValue": "{}"
         }
@@ -37,20 +27,25 @@ class QSPRPredScikitModel(Algorithm): # TODO: testy upload modelu ...
     def __init__(self, builder, callback=None):
         super().__init__(builder, callback)
         self.alg = SklearnModel
+        self.temp_dir = tempfile.TemporaryDirectory()
 
     @property
     def model(self):
         return self._model
 
+    @property
+    def model_name(self):
+        return f"{self.name}_{self.params["alg"]}"
+
     def fit(self, X: DataFrame, y: Series):
         alg_instance = self.alg(
-            base_dir=self.params['base_dir'],
-            alg=self.load_model(self.params['alg']),
-            name=self.params['name'],
-            # parameters=self.params['parameters'],
+            base_dir=self.temp_dir.name,
+            alg=self.import_sklearn_model(self.params['alg']),
+            name=self.model_name,
+            parameters=json.loads(self.params['parameters']),
         )
-        self._model = alg_instance.estimator
-        self._model.fit(X, y)
+        self._model = alg_instance
+        self._model.estimator.fit(X, y)
         if self.callback:
             self.callback(self)
 
@@ -58,18 +53,31 @@ class QSPRPredScikitModel(Algorithm): # TODO: testy upload modelu ...
         is_regression = self.mode.name == self.REGRESSION
         if self.model:
             if is_regression:
-                return self.model.predict(X)
+                return self.model.estimator.predict(X)
             else:
-                return self.model.predict_proba(X)[:, 0]
+                return self.model.estimator.predict_proba(X)[:, 0]
         else:
             raise ModelNotFittedException("You have to fit the model first.")
 
+
+    def load_model(self, path):
+        with tarfile.open(path, "r:gz") as tar:
+            tar.extractall(self.temp_dir.name)
+        base_folder = os.path.join(self.temp_dir.name, self.model_name)
+        self._model = self._model.fromFile(f"{os.path.join(base_folder, self.model_name)}_meta.json")
+        self.model.estimator = ml2json.from_json(f"{os.path.join(base_folder, self.model_name)}.json")
+
+    def save_model(self, path):
+        self._model.save(True)
+        with tarfile.open(path, "w:gz") as tar:
+            tar.add(self.temp_dir.name, arcname=self.model_name)
+
     @staticmethod
-    def load_model(model_name):
+    def import_sklearn_model(model_name):
             """Dynamically imports a model."""
-            if model_name not in MODELS:
+            if model_name not in SKLEARN_MODELS:
                 raise ValueError(f"Model '{model_name}' not found in algorithms dictionary.")
-            full_path = MODELS[model_name]
+            full_path = SKLEARN_MODELS[model_name]
             module_path, class_name = full_path.rsplit(".", 1)
             module = importlib.import_module(module_path)
             model_class = getattr(module, class_name)

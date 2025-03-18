@@ -6,6 +6,8 @@ On: 15-01-20, 12:55
 """
 import traceback
 import inspect
+
+import joblib
 import numpy as np
 import re
 from abc import ABC
@@ -43,6 +45,10 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
     def __init__(self, instance: qsar_models.Model, progress=None, onFitCall=None, validations=None):
         super().__init__(instance, progress, onFitCall)
         self.validations = validations if validations and len(validations) > 0 else self.instance.trainingStrategy.validationStrategies.all()
+
+    @property
+    def model(self):
+        return self._model
 
     def build(self) -> qsar_models.QSARModel:
         if not self.validations:
@@ -110,54 +116,29 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
 
         # Final model fitting on all data
         final_model = self.algorithmClass(self)
-        final_model.fit(X, y)
+        final_model.fit(dataset.X, dataset.y["activity"])
         self._model = final_model
 
         # Final validation (optional, as it's not truly a validation)
-        y_predicted = final_model.predict(X)
+        y_predicted = final_model.predict(dataset.X)
         for validation in self.validations:
-            self.validate(validation, y, y_predicted)
+            self.validate(validation, dataset.y["activity"], y_predicted)
 
         self.recordProgress()
+        self.save_model()
         self.saveFile()
         return self.instance
 
-    def saveModel(self, model):
-        """
-        Save the trained model to a file.
-
-        This method handles the creation and updating of the model file associated
-        with the current instance. If no model file exists, it creates one. Then,
-        it serializes the model to the file.
-
-        Args:
-            model: The trained model object to be saved.
-
-        Note:
-            - Uses the first file format associated with the training algorithm.
-            - Creates a new ModelFile if one doesn't exist for this instance.
-            - Serializes the model using the model's own serialization method.
-        """
-        # Get the first file format associated with the training algorithm
-        model_format = self.training.algorithm.fileFormats.all()[0]
-
-        # Create a new ModelFile if one doesn't exist for this instance
-        if not self.instance.modelFile:
-            ModelFile.create(
-                self.instance,
-                f'main.{model_format.fileExtension}',
-                ContentFile('placeholder'),  # Initial content, will be overwritten
-                kind=ModelFile.MAIN,
-                note=f'{self.training.algorithm.name}_main'
-            )
-
-        # Get the path of the model file
-        path = self.instance.modelFile.path
-
-        # Serialize the model to the file
-        model.serialize(path)
-
-        # Save the instance to ensure any changes are persisted
+    def save_model(self):
+        file = ModelFile.create(
+            self.instance,
+            f'{self.model.model_name}.tar.gz',
+            ContentFile('placeholder'),
+            kind=ModelFile.AUXILIARY,
+            note=f'Trained model archive for {self.model.model_name}'
+        )
+        path = file.path
+        self.model.save_model(path)
         self.instance.save()
 
     def predictMolecules(self, mols):
@@ -174,7 +155,7 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
             return np.array(predictions)
 
         self.calculateDescriptors(smiles)
-
+        self.load_model()
         real_predictions = list(self.predict(self.getX()))
         for idx,prediction in enumerate(predictions):
             if idx not in failed_indices:
@@ -241,13 +222,7 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
                 raise Exception(f'Number of compounds in a QSAR model ({len(compounds)}) is different from the set of activities assigned to them ({len(activities)}). Something went wrong when the data was cleaned for modeling.')
             activities = Series(activities)
 
-            # use the activity threshold for classifications
             if self.training.mode.name == Algorithm.CLASSIFICATION:
-                activity_thrs = self.training.activityThreshold
-                if activity_thrs is None:
-                    raise Exception('No activity threshold specified for classification model.')
-                activities = activities.apply(lambda x : 1 if x >= activity_thrs else 0)
-
                 if not self.instance.predictionsType:
                     self.instance.predictionsType = ActivityTypes.objects.get_or_create(
                         value="Active Probability"
@@ -261,3 +236,6 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
             self.instance.save()
             self.y = activities
             return self.y, compounds
+
+    def load_model(self):
+        self._model.load_model(self.instance.files.filter(format=self.training.algorithm.fileFormats.all()[1].id)[0].path)

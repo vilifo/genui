@@ -205,9 +205,12 @@ def get_sklearn_models():
 
     return regressors, classifiers
 
+R, C = get_sklearn_models()
+SKLEARN_MODELS = R | C
 
 def get_model_params(model_class):
     params = {}
+    model_class = SKLEARN_MODELS[model_class]
     module = importlib.import_module(".".join(model_class.rsplit('.')[:-1]))
     model_class = model_class.rsplit('.')[-1]
     model_class = getattr(module, model_class)
