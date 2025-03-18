@@ -28,6 +28,7 @@ class QSPRPredScikitModel(Algorithm): # TODO: testy upload modelu ...
         super().__init__(builder, callback)
         self.alg = SklearnModel
         self.temp_dir = tempfile.TemporaryDirectory()
+        self.sklearn_class = None
 
     @property
     def model(self):
@@ -38,14 +39,16 @@ class QSPRPredScikitModel(Algorithm): # TODO: testy upload modelu ...
         return f"{self.name}_{self.params["alg"]}"
 
     def fit(self, X: DataFrame, y: Series):
+        if self.sklearn_class is None:
+            self.sklearn_class = self.import_sklearn_model(self.params['alg'])
         alg_instance = self.alg(
             base_dir=self.temp_dir.name,
-            alg=self.import_sklearn_model(self.params['alg']),
+            alg=self.sklearn_class,
             name=self.model_name,
             parameters=json.loads(self.params['parameters']),
         )
         self._model = alg_instance
-        self._model.estimator.fit(X, y)
+        self._model.estimator.fit(X.values, y.values)
         if self.callback:
             self.callback(self)
 
@@ -53,9 +56,9 @@ class QSPRPredScikitModel(Algorithm): # TODO: testy upload modelu ...
         is_regression = self.mode.name == self.REGRESSION
         if self.model:
             if is_regression:
-                return self.model.estimator.predict(X)
+                return self.model.estimator.predict(X.values)
             else:
-                return self.model.estimator.predict_proba(X)[:, 0]
+                return self.model.estimator.predict_proba(X.values)[:, 0]
         else:
             raise ModelNotFittedException("You have to fit the model first.")
 
@@ -65,12 +68,11 @@ class QSPRPredScikitModel(Algorithm): # TODO: testy upload modelu ...
             tar.extractall(self.temp_dir.name)
         base_folder = os.path.join(self.temp_dir.name, self.model_name)
         self._model = self._model.fromFile(f"{os.path.join(base_folder, self.model_name)}_meta.json")
-        self.model.estimator = ml2json.from_json(f"{os.path.join(base_folder, self.model_name)}.json")
 
     def save_model(self, path):
         self._model.save(True)
         with tarfile.open(path, "w:gz") as tar:
-            tar.add(self.temp_dir.name, arcname=self.model_name)
+            tar.add(os.path.join(self.temp_dir.name, self.model_name), arcname=self.model_name)
 
     @staticmethod
     def import_sklearn_model(model_name):

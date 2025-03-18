@@ -7,13 +7,11 @@ On: 15-01-20, 12:55
 import traceback
 import inspect
 
-import joblib
 import numpy as np
 import re
 from abc import ABC
 import pandas as pd
 from qsprpred.data.descriptors.sets import DataFrameDescriptorSet
-from qsprpred.models import CrossValAssessor
 from rdkit import Chem
 from pandas import DataFrame, Series
 from sklearn.model_selection import KFold, StratifiedKFold
@@ -30,8 +28,6 @@ from .bases import DescriptorBuilderMixIn
 
 from qsprpred.data.sampling import splits
 from qsprpred.data import QSPRDataset
-from qsprpred.data.descriptors import fingerprints as fp_module
-from qsprpred.data.descriptors import sets as descriptors_set_module
 
 def camel_to_snake(name):
     return re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
@@ -45,10 +41,6 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
     def __init__(self, instance: qsar_models.Model, progress=None, onFitCall=None, validations=None):
         super().__init__(instance, progress, onFitCall)
         self.validations = validations if validations and len(validations) > 0 else self.instance.trainingStrategy.validationStrategies.all()
-
-    @property
-    def model(self):
-        return self._model
 
     def build(self) -> qsar_models.QSARModel:
         if not self.validations:
@@ -135,7 +127,7 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
             f'{self.model.model_name}.tar.gz',
             ContentFile('placeholder'),
             kind=ModelFile.AUXILIARY,
-            note=f'Trained model archive for {self.model.model_name}'
+            note=f'{self.model.model_name}'
         )
         path = file.path
         self.model.save_model(path)
@@ -238,4 +230,4 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
             return self.y, compounds
 
     def load_model(self):
-        self._model.load_model(self.instance.files.filter(format=self.training.algorithm.fileFormats.all()[1].id)[0].path)
+        self.model.load_model(self.instance.files.filter(note=self.model.model_name)[0].path)
