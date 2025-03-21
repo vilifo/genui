@@ -155,7 +155,7 @@ class QSARModelInit(CompoundsMixIn):
 
         return instance
 
-    def uploadModel(self, filePath, algorithm, mode, descriptors, predictionsType, predictionsUnits):
+    def uploadModel(self, filePath, algorithm, mode, descriptors, predictionsType, predictionsUnits, parameters):
         """
         Upload a pre-trained model file and create a corresponding QSAR model.
 
@@ -184,7 +184,8 @@ class QSARModelInit(CompoundsMixIn):
                 "mode": mode.id,
                 "descriptors": [
                   x.id for x in descriptors
-                ]
+                ],
+                "parameters": parameters,
             },
         }
         response = self.client.post(create_url, data=post_data, format='json')
@@ -254,7 +255,10 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             instance_first.trainingStrategy.mode,
             [DescriptorGroup.objects.get(name='MORGANFP')],
             instance_first.predictionsType.value,
-            instance_first.predictionsUnits.value if instance_first.predictionsUnits else None
+            instance_first.predictionsUnits.value if instance_first.predictionsUnits else None,
+            {"alg": "RandomForestClassifier",
+             "parameters": json.dumps({"n_estimators": 150, })
+             }
         )
 
         builder = builders.BasicQSARModelBuilder(instance)
@@ -298,7 +302,10 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             model.trainingStrategy.mode,
             [DescriptorGroup.objects.get(name='MORGANFP')],
             model.predictionsType.value,
-            model.predictionsUnits.value if model.predictionsUnits else None
+            model.predictionsUnits.value if model.predictionsUnits else None,
+            {"alg": "RandomForestRegressor",
+             "parameters": json.dumps({"n_estimators": 150, })
+             }
         )
         builder = builders.BasicQSARModelBuilder(model_from_file)
         builder.calculateDescriptors(["CC", "CCO"])
@@ -328,7 +335,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         # Add a second validation strategy
         randomSplit = RandomSplit.objects.get_or_create(
             testFraction=0.2
-        )
+        )[0]
         second_strategy = BasicValidationStrategy.objects.create(
             trainingStrategy=model.trainingStrategy,
             cvFolds=5,
@@ -438,7 +445,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         ]
         model = self.createTestQSARModel(
             descriptors=[DescriptorGroup.objects.get_or_create(
-                name="QSPRPRED_DESCRIPTOR_SET", arguments=fingerprint) for fingerprint in fingerprints])
+                name="QSPRPRED_DESCRIPTOR_SET", arguments=fingerprint)[0] for fingerprint in fingerprints])
 
         response = self.client.get(reverse('model-list'))
         self.assertEqual(response.status_code, 200)
@@ -477,14 +484,11 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
                 "maxPerTarget": 50
             }
         )
-        model = self.createTestQSARModel(descriptors=[DescriptorGroup.objects.get_or_create(
-                name="QSPRPRED_FINGERPRINT", arguments={"fingerprint": "MorganFP", "radius": 3, "nBits": 2048, })[0]])
-
         temp_dir_model = tempfile.TemporaryDirectory()
 
         activity_set = self.molset.activities.get()
         activity_type = 1
-        compounds, activities, units = activity_set.cleanForModelling(activity_type)
+        compounds, activities, units = activity_set.cleanForModelling(ActivityTypes.objects.get(value="Ki_pChEMBL").id)
         compounds = [x.canonicalSMILES for x in compounds]
 
         dataset = QSPRDataset("TestDataset",
@@ -511,6 +515,9 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             [DescriptorGroup.objects.get_or_create(
                 name="QSPRPRED_FINGERPRINT", arguments={"fingerprint": "MorganFP", "radius": 3, "nBits": 2048, })[0]],
             'Active Probability',
-            None
+            None,
+            {"alg": "RandomForestClassifier",
+             "parameters": json.dumps({"n_estimators": 150, })
+             }
         )
-        print(self.predictWithModel(instance, self.molset))
+        self.predictWithModel(instance, self.molset)
