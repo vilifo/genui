@@ -117,11 +117,11 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
             self.validate(validation, dataset.y["activity"], y_predicted)
 
         self.recordProgress()
-        self.save_model()
+        # self.save_model()
         self.saveFile()
         return self.instance
 
-    def save_model(self):
+    def save_model(self): # Backup, for future endeavours
         file = ModelFile.create(
             self.instance,
             f'{self.model.model_name}.tar.gz',
@@ -147,7 +147,6 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
             return np.array(predictions)
 
         self.calculateDescriptors(smiles)
-        self.load_model()
         real_predictions = list(self.predict(self.getX()))
         for idx,prediction in enumerate(predictions):
             if idx not in failed_indices:
@@ -229,5 +228,5 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
             self.y = activities
             return self.y, compounds
 
-    def load_model(self):
-        self.model.load_model(self.instance.files.filter(note=self.model.model_name)[0].path)
+    def load_model(self): # Backup, for future endeavours
+        self._model = self.model.load_model(self.instance.files.filter(note=self.model.model_name)[0].path)

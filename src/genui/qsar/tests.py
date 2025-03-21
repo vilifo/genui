@@ -6,6 +6,8 @@ from django.core.exceptions import ImproperlyConfigured
 from qsprpred.models import SklearnModel
 from rest_framework.test import APITestCase
 from django.urls import reverse
+import tempfile
+import tarfile
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 from genui.compounds.models import ActivityTypes, ActivityUnits
@@ -45,7 +47,8 @@ class QSARModelInit(CompoundsMixIn):
             parameters=None,
             descriptors=None,
             metrics=None,
-            dataSplit=None
+            dataSplit=None,
+            correct=True,
     ):
         """
         Create a test QSAR model with specified parameters.
@@ -115,9 +118,12 @@ class QSARModelInit(CompoundsMixIn):
         create_url = reverse('model-list')
         response = self.client.post(create_url, data=post_data, format='json')
         print(json.dumps(response.data, indent=4))
-        self.assertEqual(response.status_code, 201)
 
-        return QSARModel.objects.get(pk=response.data["id"])
+        if correct:
+            self.assertEqual(response.status_code, 201)
+            return QSARModel.objects.get(pk=response.data["id"])
+        else:
+            return response
 
     def predictWithModel(self, model, to_predict):
         """
@@ -213,8 +219,15 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         model = self.createTestQSARModel()
 
         path = model.modelFile.path
-        model = joblib.load(model.modelFile.path)
-        self.assertTrue(isinstance(model, SklearnModel))
+        temp_dir = tempfile.TemporaryDirectory()
+        with tarfile.open(path, 'r:*') as tar_ref:
+            tar_ref.extractall(temp_dir.name)
+        
+        model_alg_major = "QSPRPredScikitModel"
+        model_alg_minor = "RandomForestClassifier"
+        model_name = f"{model_alg_major}_{model_alg_minor}"
+        model = SklearnModel.fromFile(os.path.join(temp_dir.name, model_name, model_name + "_meta.json"))
+        self.assertTrue(isinstance(model.estimator, RandomForestClassifier))
 
         # get the model via api
         response = self.client.get(reverse('model-list'))
@@ -258,12 +271,24 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         """Test the creation and basic functionality of a regression QSAR model."""
         model = self.createTestQSARModel(
             mode=AlgorithmMode.objects.get(name="regression"),
+            parameters={"alg": "RandomForestRegressor",
+                        "parameters": json.dumps({"n_estimators": 150, })
+                        },
             metrics=ModelPerformanceMetric.objects.filter(name__in=("R2", "MSE")),
             activityType=ActivityTypes.objects.get(value="Ki")
         )
         self.assertEqual(model.predictionsType, ActivityTypes.objects.get(value="Ki"))
         self.assertEqual(model.predictionsUnits, ActivityUnits.objects.get(value="nM"))
-        self.assertTrue(isinstance(joblib.load(model.modelFile.path), RandomForestRegressor))
+        path = model.modelFile.path
+        temp_dir = tempfile.TemporaryDirectory()
+        with tarfile.open(path, 'r:*') as tar_ref:
+            tar_ref.extractall(temp_dir.name)
+
+        model_alg_major = "QSPRPredScikitModel"
+        model_alg_minor = "RandomForestRegressor"
+        model_name = f"{model_alg_major}_{model_alg_minor}"
+        model_ = SklearnModel.fromFile(os.path.join(temp_dir.name, model_name, model_name + "_meta.json"))
+        self.assertTrue(isinstance(model_.estimator, RandomForestRegressor))
         activity_set_orig = self.predictWithModel(model, self.molset)
 
         # try to upload it as a file and use that model for predictions
@@ -301,7 +326,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         model = self.createTestQSARModel()
         
         # Add a second validation strategy
-        randomSplit = RandomSplit.objects.create(
+        randomSplit = RandomSplit.objects.get_or_create(
             testFraction=0.2
         )
         second_strategy = BasicValidationStrategy.objects.create(
@@ -396,7 +421,15 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         ]
         model = self.createTestQSARModel(
             descriptors=[DescriptorGroup.objects.get_or_create(
-                name="QSPRPRED_FINGERPRINT", arguments=fingerprint) for fingerprint in fingerprints])
+                name="QSPRPRED_FINGERPRINT", arguments=fingerprint)[0] for fingerprint in fingerprints])
+
+        response = self.client.get(reverse('model-list'))
+        self.assertEqual(response.status_code, 200)
+        print(json.dumps(response.data[0], indent=4))
+
+        # create predictions with the model
+        model = QSARModel.objects.get(pk=response.data[0]['id'])
+        self.predictWithModel(model, self.molset)
 
     def test_qsprpred_descriptor_set(self):
         fingerprints = [
@@ -407,7 +440,77 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             descriptors=[DescriptorGroup.objects.get_or_create(
                 name="QSPRPRED_DESCRIPTOR_SET", arguments=fingerprint) for fingerprint in fingerprints])
 
+        response = self.client.get(reverse('model-list'))
+        self.assertEqual(response.status_code, 200)
+        print(json.dumps(response.data[0], indent=4))
+
+        # create predictions with the model
+        model = QSARModel.objects.get(pk=response.data[0]['id'])
+        self.predictWithModel(model, self.molset)
+
     def test_change_algorithm(self):
-        alg = Algorithm.objects.get(name="QSPRPredScikitModel")
-        parameters = {"alg": "KNeighborsClassifier", "parameters": {"n_neighbors": 5}}
-        model = self.createTestQSARModel(algorithm=alg, parameters=parameters)
+        parameters = {"alg": "KNeighborsClassifier", "parameters": json.dumps({"n_neighbors": 5})}
+        model = self.createTestQSARModel(parameters=parameters)
+
+    def test_incorrect_algorithm_parameters_and_combinations(self):
+        response = self.createTestQSARModel(parameters={"alg": "KNeighborsClassifier",
+                                                        "parameters":json.dumps({"n_estimators": 5})},
+                                            correct=False)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual('Parameter n_estimators is not valid for the selected algorithm KNeighborsClassifier.', response.json()[0])
+
+        response = self.createTestQSARModel(mode=AlgorithmMode.objects.get(name="regression"), correct=False)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual('You cannot use a classifier algorithm for a regression model.',
+                         response.json()[0])
+
+    def test_upload_external_model_file(self):
+        from qsprpred.data import QSPRDataset
+        from qsprpred.data import RandomSplit
+        from qsprpred.data.descriptors.fingerprints import MorganFP
+        import pandas as pd
+
+        self.molset = self.createMolSet(
+            reverse('chemblSet-list'),
+            {
+                "targets": ["CHEMBL251"],
+                "maxPerTarget": 50
+            }
+        )
+        model = self.createTestQSARModel(descriptors=[DescriptorGroup.objects.get_or_create(
+                name="QSPRPRED_FINGERPRINT", arguments={"fingerprint": "MorganFP", "radius": 3, "nBits": 2048, })[0]])
+
+        temp_dir_model = tempfile.TemporaryDirectory()
+
+        activity_set = self.molset.activities.get()
+        activity_type = 1
+        compounds, activities, units = activity_set.cleanForModelling(activity_type)
+        compounds = [x.canonicalSMILES for x in compounds]
+
+        dataset = QSPRDataset("TestDataset",
+                              [{"name": "activity", "task": "SINGLECLASS", "th": [6.5]}],
+                              pd.DataFrame({'SMILES': compounds, 'activity': activities}),
+                              smiles_col="SMILES",)
+
+        rand_split = RandomSplit(test_fraction=0.2, dataset=dataset)
+        dataset.prepareDataset(
+            split=rand_split,
+            feature_calculators=[MorganFP(radius=3, nBits=2048)],
+        )
+        alg = SklearnModel(temp_dir_model.name, RandomForestClassifier,
+                           "TestModel", parameters={"n_estimators": 150})
+        alg.estimator.fit(dataset.X.values, dataset.y["activity"].values)
+        alg.save(True)
+        model_path = os.path.join(temp_dir_model.name, alg.name + ".tar.gz")
+        with tarfile.open(model_path, "w:gz") as tar:
+            tar.add(os.path.join(temp_dir_model.name, alg.name), arcname=alg.name)
+        instance = self.uploadModel(
+            model_path,
+            Algorithm.objects.get_or_create(name="QSPRPredScikitModel")[0],
+            AlgorithmMode.objects.get(name="classification"),
+            [DescriptorGroup.objects.get_or_create(
+                name="QSPRPRED_FINGERPRINT", arguments={"fingerprint": "MorganFP", "radius": 3, "nBits": 2048, })[0]],
+            'Active Probability',
+            None
+        )
+        print(self.predictWithModel(instance, self.molset))

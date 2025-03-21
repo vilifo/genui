@@ -3,12 +3,14 @@ from pandas import DataFrame, Series
 from qsprpred.models import SklearnModel
 import tempfile
 import tarfile
+import zipfile
 import os
 import importlib
 import json
 
 from genui.models.models import ModelParameter
 from genui.models.genuimodels.bases import Algorithm, ModelNotFittedException
+from genui.models.models import ModelFileFormat
 from genui.utils.inspection import SKLEARN_MODELS
 
 class QSPRPredScikitModel(Algorithm): # TODO: testy upload modelu ...
@@ -64,10 +66,21 @@ class QSPRPredScikitModel(Algorithm): # TODO: testy upload modelu ...
 
 
     def load_model(self, path):
-        with tarfile.open(path, "r:gz") as tar:
-            tar.extractall(self.temp_dir.name)
-        base_folder = os.path.join(self.temp_dir.name, self.model_name)
-        self._model = self._model.fromFile(f"{os.path.join(base_folder, self.model_name)}_meta.json")
+        if path.endswith('.zip'):
+            with zipfile.ZipFile(path, 'r') as zip_ref:
+                zip_ref.extractall(self.temp_dir.name)
+                base_name = zip_ref.namelist()[0]
+        elif path.endswith(('.tar.gz', '.tgz', '.tar.bz2', '.tbz2', '.tar')):
+            with tarfile.open(path, 'r:*') as tar_ref:
+                tar_ref.extractall(self.temp_dir.name)
+                base_name = tar_ref.getmembers()[0].name
+        else:
+            raise ValueError("Unsupported archive format: {}".format(path))
+
+        base_folder = os.path.join(self.temp_dir.name, base_name)
+        self._model = self.alg.fromFile(f"{os.path.join(base_folder, base_name)}_meta.json")
+        self.params['alg'] = self.model.estimator.__class__.__name__
+        return self._model
 
     def save_model(self, path):
         self._model.save(True)
@@ -84,3 +97,20 @@ class QSPRPredScikitModel(Algorithm): # TODO: testy upload modelu ...
             module = importlib.import_module(module_path)
             model_class = getattr(module, class_name)
             return model_class
+
+    def getDeserializer(self):
+        return self.load_model
+
+    def getSerializer(self):
+        return self.save_model
+
+    @classmethod
+    def getFileFormats(cls, attach_to=None):
+        formats = [ModelFileFormat.objects.get_or_create(
+                       fileExtension=".tar.gz",
+                       description="A tar archive file."
+                    )[0],
+                   ]
+        if attach_to:
+            cls.attachToInstance(attach_to, formats, attach_to.fileFormats)
+        return formats

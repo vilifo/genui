@@ -61,13 +61,7 @@ class Algorithm(ABC):
         formats = [models.ModelFileFormat.objects.get_or_create(
                     fileExtension=".joblib.gz",
                     description="A compressed joblib file."
-                    )[0],
-                   models.ModelFileFormat.objects.get_or_create(
-                       fileExtension=".tar.gz",
-                       description="A tar archive file."
-                    )[0]
-                   ]
-
+                    )[0],]
         if attach_to:
             cls.attachToInstance(attach_to, formats, attach_to.fileFormats)
         return formats
@@ -433,7 +427,7 @@ class PredictionMixIn:
         if self.model:
             return self.model.predict(X)
         else:
-            raise ModelNotFittedException("The model is not trained or loaded. Invalid call to 'predict'.") # TODO: throw a more specific exception
+            raise ModelNotFittedException("The model is not trained or loaded. Invalid call to 'predict'.")
 
 class ModelNotFittedException(GenUIException):
     pass

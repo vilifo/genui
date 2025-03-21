@@ -84,7 +84,7 @@ class QSARModelInitSerializer(QSARModelSerializer):
         if not data["build"] and ("predictionsType" not in data or "predictionsUnits" not in data or not data["predictionsType"]):
             raise serializers.ValidationError("You have to specify the type and units of the predicted values if you are not building the model from existing data. Both 'predictionsType' and 'predictionsUnits' must be specified. You can set 'predictionsUnits' to 'null' if the model output variable has no dimension.")
 
-        if tr_strat_data["algorithm"].name == 'QSPRPredScikitModel':
+        if tr_strat_data["algorithm"].name == 'QSPRPredScikitModel' and "parameters" in tr_strat_data.keys():
             params = tr_strat_data['parameters']
             alg = params['alg']
             if "Classifier" in alg and tr_strat_data['mode'].name == "regression":
