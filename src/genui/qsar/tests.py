@@ -1,7 +1,6 @@
 import json
 import os
 
-import joblib
 from django.core.exceptions import ImproperlyConfigured
 from qsprpred.models import SklearnModel
 from rest_framework.test import APITestCase
@@ -14,7 +13,7 @@ from genui.compounds.models import ActivityTypes, ActivityUnits
 from genui.compounds.extensions.chembl.tests import CompoundsMixIn
 from genui.qsar.models import QSARModel, DescriptorGroup, ModelActivitySet
 from genui.models.models import ModelPerformance, Algorithm, AlgorithmMode, ModelFile, ModelPerformanceMetric, \
-    BasicValidationStrategy, RandomSplit
+    BasicValidationStrategy, RandomSplit, ValueAggregationFunction
 from .genuimodels import builders
 
 
@@ -48,6 +47,7 @@ class QSARModelInit(CompoundsMixIn):
             descriptors=None,
             metrics=None,
             dataSplit=None,
+            hyperParamOptStrategies=None,
             correct=True,
     ):
         """
@@ -90,6 +90,9 @@ class QSARModelInit(CompoundsMixIn):
                 testFraction=0.2
             )
 
+        if not hyperParamOptStrategies:
+            hyperParamOptStrategies = []
+
         post_data = {
             "name": "Test Model",
             "description": "test description",
@@ -112,7 +115,8 @@ class QSARModelInit(CompoundsMixIn):
                     "metrics": [
                         x.id for x in metrics
                     ]
-                }]
+                }],
+                "hyperParamOptStrategies": hyperParamOptStrategies
             }
         }
         create_url = reverse('model-list')
@@ -521,3 +525,11 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
              }
         )
         self.predictWithModel(instance, self.molset)
+
+    def test_hyperparameter_optimization(self):
+        model = self.createTestQSARModel(hyperParamOptStrategies=[{
+                    "resourcetype": "GridSearchStrategy",
+                    "searchSpace": {"n_estimators": [150, 200]},
+                    "scoreAggregation": ValueAggregationFunction.objects.get(name="Mean").id
+                }],)
+

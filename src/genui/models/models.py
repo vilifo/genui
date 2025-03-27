@@ -283,6 +283,13 @@ class ModelPerformanceMetric(ImportableModelComponent):
     def __str__(self):
         return '%s object (%s)' % (self.__class__.__name__, self.name)
 
+class ValueAggregationFunction(ImportableModelComponent):
+    name = models.CharField(unique=True, blank=False, max_length=128)
+    description = models.TextField(max_length=10000, blank=True)
+
+    def __str__(self):
+        return '%s object (%s)' % (self.__class__.__name__, self.name)
+
 class DataSplit(PolymorphicModel):
     pass
 
@@ -293,8 +300,17 @@ class RandomSplit(DataSplit):
 class ValidationStrategy(PolymorphicModel):
     metrics = models.ManyToManyField(ModelPerformanceMetric)
     trainingStrategy = models.ForeignKey(TrainingStrategy, null=False, on_delete=models.CASCADE, related_name='validationStrategies')
-    # CHANGE: ValidationStrategy now linked to TrainingStrategy instead of Model.
-    # This allows for more flexible configuration of validation strategies for different training approaches.
+
+class HyperparameterOptimizationStrategy(PolymorphicModel):
+    searchSpace = models.JSONField(blank=True)
+    scoreAggregation = models.ForeignKey(ValueAggregationFunction, null=False, on_delete=models.CASCADE, related_name='hyperParamOptStrategy')
+    trainingStrategy = models.ForeignKey(TrainingStrategy, null=False, on_delete=models.CASCADE, related_name='hyperParamOptStrategies')
+
+class OptunaStrategy(HyperparameterOptimizationStrategy):
+    nTrials = models.IntegerField(blank=False)
+
+class GridSearchStrategy(HyperparameterOptimizationStrategy):
+    pass
 
 class CV(ValidationStrategy):
     cvFolds = models.IntegerField(blank=False)
@@ -323,7 +339,7 @@ class ModelPerformance(PolymorphicModel):
 class ModelPerformanceCV(ModelPerformance):
     fold = models.IntegerField(blank=False)
 
-class ModelPerfomanceNN(ModelPerformance):
+class ModelPerformanceNN(ModelPerformance):
     epoch = models.IntegerField(null=False, blank=False)
     step = models.IntegerField(null=False, blank=False)
 

@@ -15,10 +15,10 @@ from . import models
 from genui.utils.inspection import importModuleWithException, getSubclassesFromModule
 
 
-def discoverGenuiModels(container, core_package="genuimodels", modules=("algorithms", "builders", "metrics"), force=False, additional_bases=tuple()):
+def discoverGenuiModels(container, core_package="genuimodels", modules=("algorithms", "builders", "metrics", "aggregations"), force=False, additional_bases=tuple()):
     if checkInitCondition(force):
         from .genuimodels import bases
-        base_classes = [bases.Algorithm, bases.ValidationMetric, bases.ModelBuilder] + list(additional_bases)
+        base_classes = [bases.Algorithm, bases.ValidationMetric, bases.ModelBuilder, bases.ValueAggregationFunction] + list(additional_bases)
 
         with transaction.atomic():
             for module in modules:

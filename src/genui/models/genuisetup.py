@@ -29,8 +29,13 @@ def setup(*args, **kwargs):
             models.ModelParameterInt,
             models.ModelParameterStr,
             models.ModelPerformance,
-            models.ModelPerfomanceNN,
+            models.ModelPerformanceNN,
             models.ModelPerformanceCV,
+            models.DataSplit,
+            models.RandomSplit,
+            models.HyperparameterOptimizationStrategy,
+            models.GridSearchStrategy,
+            models.OptunaStrategy,
         ],
         force=kwargs['force']
     )
@@ -44,6 +49,7 @@ def setup(*args, **kwargs):
             models.ModelFileFormat,
             models.ModelParameter,
             models.ModelPerformanceMetric,
+            models.ValueAggregationFunction
         ],
         permissions=['view'],
         force=kwargs['force']

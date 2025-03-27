@@ -12,6 +12,7 @@ import re
 from abc import ABC
 import pandas as pd
 from qsprpred.data.descriptors.sets import DataFrameDescriptorSet
+from qsprpred.models import BaseMonitor, CrossValAssessor
 from rdkit import Chem
 from pandas import DataFrame, Series
 from sklearn.model_selection import KFold, StratifiedKFold
@@ -35,6 +36,23 @@ def camel_to_snake(name):
 def snake_to_camel(name):
     words = name.split('_')
     return words[0] + ''.join(word.capitalize() for word in words[1:])
+
+class RecordProgressMonitor(BaseMonitor):
+    def __init__(self, on_fold_start=None):
+        super().__init__()
+        self.on_fold_start = on_fold_start if on_fold_start else lambda: None
+
+    def onFoldStart(
+            self,
+            fold: int,
+            X_train: np.ndarray,
+            y_train: np.ndarray,
+            X_test: np.ndarray,
+            y_test: np.ndarray,
+    ):
+        super().onFoldStart(fold, X_train, y_train, X_test, y_test)
+        self.on_fold_start()
+
 
 
 class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationMixIn, ProgressMixIn, ModelBuilder, ABC):
@@ -108,10 +126,12 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
 
         # Final model fitting on all data
         final_model = self.algorithmClass(self)
+        self.recordProgress()
         final_model.fit(dataset.X, dataset.y["activity"])
         self._model = final_model
 
         # Final validation (optional, as it's not truly a validation)
+        self.recordProgress()
         y_predicted = final_model.predict(dataset.X)
         for validation in self.validations:
             self.validate(validation, dataset.y["activity"], y_predicted)

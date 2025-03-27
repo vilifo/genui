@@ -10,6 +10,7 @@ import weakref
 from abc import ABC, abstractmethod
 
 import joblib
+import numpy as np
 from django.core.exceptions import ImproperlyConfigured
 from django.db import transaction
 from pandas import DataFrame, Series
@@ -247,6 +248,38 @@ class ValidationMetric(ABC):
                     **kwargs
                 )
 
+class ValueAggregationFunction(ABC):
+    name = None
+    description = None
+
+    def __init__(self, builder):
+        self.builder = builder
+
+    @classmethod
+    def getDjangoModel(cls, corePackage=None, update=False):
+        if not cls.name:
+            raise Exception('You have to specify a name for the aggregation function in its class "name" property')
+
+        ret, ret_created = models.ValueAggregationFunction.objects.get_or_create(name=cls.name)
+
+        # just return if we are not setting up a new instance
+        if not ret_created and not update:
+            return ret
+
+        # just return if we are not creating a new instance
+        if corePackage:
+            ret.corePackage = corePackage
+            ret.save()
+        if hasattr(cls, 'description'):
+            ret.description = cls.description
+            ret.save()
+        return ret
+
+    @abstractmethod
+    def __call__(self, predicted_vals : Series | np.ndarray):
+        pass
+
+
 class ModelBuilder(ABC):
 
     @classmethod
@@ -304,6 +337,7 @@ class ModelBuilder(ABC):
         self.onFit = onFit
 
         self.validations = self.training.validationStrategies.all()
+        self.hyper_param_opt = self.training.hyperParamOptStrategies.first()
         self.metricClasses = []
         for validation in self.validations:
             self.metricClasses.extend([self.findMetricClass(x.name, x.corePackage) for x in validation.metrics.all() if x])
