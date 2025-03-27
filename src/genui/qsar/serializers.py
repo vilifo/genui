@@ -14,6 +14,7 @@ from genui.compounds.serializers import MolSetSerializer, ActivitySetSerializer,
 from genui.models.serializers import TrainingStrategySerializer, ModelSerializer, \
     TrainingStrategyInitSerializer, BasicValidationStrategy, \
     DataSplitSerializer
+from genui.models import models as genui_models
 from . import models
 from ..utils.inspection import get_model_params
 
@@ -96,10 +97,16 @@ class QSARModelInitSerializer(QSARModelSerializer):
             for param in parameters:
                 if not param in alg_parameters:
                     raise serializers.ValidationError(f"Parameter {param} is not valid for the selected algorithm {alg}.")
+
+        hypo_data = tr_strat_data["hyperParamOptStrategies"]
+        val_data = tr_strat_data["validationStrategies"]
+        if hypo_data and len(val_data) > 1:
+            raise serializers.ValidationError("You cannot use more than one validation strategy with hyperparameter optimization.")
         return ret
 
     def create(self, validated_data, **kwargs):
         validation_strategies_data = validated_data['trainingStrategy'].pop('validationStrategies', [])
+        hypo_data = validated_data['trainingStrategy'].pop('hyperParamOptStrategies', None)
         instance = super().create(
             validated_data
             , molset=validated_data['molset'] if 'molset' in validated_data else None
@@ -129,6 +136,15 @@ class QSARModelInitSerializer(QSARModelSerializer):
             )
             validationStrategy.metrics.set(vs_data['metrics'])
             validationStrategy.save()
+
+        if hypo_data:
+            hyperparam_opt_strategy_class = getattr(genui_models, hypo_data["resourcetype"])
+            hypo_data.pop("resourcetype")
+            hyperparam_opt_strategy = hyperparam_opt_strategy_class.objects.create(
+                trainingStrategy=trainingStrategy,
+                **hypo_data
+            )
+            hyperparam_opt_strategy.save()
 
         if "predictionsType" in validated_data:
             instance.predictionsType = ActivityTypes.objects.get_or_create(

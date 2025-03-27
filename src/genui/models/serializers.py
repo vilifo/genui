@@ -9,13 +9,15 @@ from rest_polymorphic.serializers import PolymorphicSerializer
 
 from genui.utils.serializers import GenericModelSerializerMixIn
 from genui.models.models import (ModelFileFormat, ModelBuilder, Model, PARAM_VALUE_CTYPE_TO_MODEL_MAP, ModelParameter, \
-                                 Algorithm, TrainingStrategy, ModelFile, BasicValidationStrategy, ModelPerformanceMetric, ValidationStrategy, \
-                                 AlgorithmMode, ModelParameterValue, ModelPerformance, DataSplit, RandomSplit, ValueAggregationFunction,
+                                 Algorithm, TrainingStrategy, ModelFile, BasicValidationStrategy,
+                                 ModelPerformanceMetric, ValidationStrategy, \
+                                 AlgorithmMode, ModelParameterValue, ModelPerformance, DataSplit, RandomSplit,
+                                 ValueAggregationFunction,
                                  HyperparameterOptimizationStrategy, GridSearchStrategy, OptunaStrategy)
 from genui.projects.models import Project
 
-class ModelFileFormatSerializer(serializers.HyperlinkedModelSerializer):
 
+class ModelFileFormatSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
         model = ModelFileFormat
         fields = ('id', 'fileExtension', 'description')
@@ -32,8 +34,8 @@ class ModelParameterSerializer(serializers.HyperlinkedModelSerializer):
     def get_defaultValue(self, obj):
         return obj.defaultValue.value
 
-class AlgorithmModeSerializer(serializers.HyperlinkedModelSerializer):
 
+class AlgorithmModeSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
         model = AlgorithmMode
         fields = ('id', 'name',)
@@ -48,9 +50,10 @@ class AlgorithmSerializer(serializers.HyperlinkedModelSerializer):
         model = Algorithm
         fields = ('id', 'name', 'fileFormats', 'parameters', 'validModes')
 
+
 class ModelPerformanceMetricSerializer(serializers.HyperlinkedModelSerializer):
     validAlgorithms = serializers.PrimaryKeyRelatedField(many=True, queryset=Algorithm.objects.all())
-    validModes =  AlgorithmModeSerializer(many=True)
+    validModes = AlgorithmModeSerializer(many=True)
 
     class Meta:
         model = ModelPerformanceMetric
@@ -73,15 +76,14 @@ class ModelParameterValueSerializer(serializers.HyperlinkedModelSerializer):
 
     class Meta:
         model = ModelParameterValue
-        fields = ('id','parameter', 'value')
-        
+        fields = ('id', 'parameter', 'value')
+
+
 class ValueAggregationFunctionSerializer(serializers.HyperlinkedModelSerializer):
-    name = serializers.CharField()
-    description = serializers.CharField()
-    
     class Meta:
         model = ValueAggregationFunction
         fields = ('id', 'name', 'description')
+
 
 class HyperparameterOptimizationStrategySerializer(serializers.HyperlinkedModelSerializer):
     scoreAggregation = ValueAggregationFunctionSerializer(many=False)
@@ -89,7 +91,8 @@ class HyperparameterOptimizationStrategySerializer(serializers.HyperlinkedModelS
 
     class Meta:
         model = HyperparameterOptimizationStrategy
-        fields = ('id', 'searchSpace', 'scoreAggregation', 'trainingStrategy')
+        fields = ('searchSpace', 'scoreAggregation', 'trainingStrategy')
+
 
 class HyperparameterOptimizationStrategyInitSerializer(HyperparameterOptimizationStrategySerializer):
     scoreAggregation = serializers.PrimaryKeyRelatedField(many=False, queryset=ValueAggregationFunction.objects.all())
@@ -99,10 +102,6 @@ class HyperparameterOptimizationStrategyInitSerializer(HyperparameterOptimizatio
         model = HyperparameterOptimizationStrategy
         fields = tuple(x for x in HyperparameterOptimizationStrategySerializer.Meta.fields if x != 'trainingStrategy')
 
-class GridSearchStrategySerializer(HyperparameterOptimizationStrategySerializer):
-    class Meta:
-        model = GridSearchStrategy
-        fields = HyperparameterOptimizationStrategySerializer.Meta.fields
 
 class GridSearchStrategyInitSerializer(HyperparameterOptimizationStrategyInitSerializer):
     class Meta:
@@ -110,12 +109,11 @@ class GridSearchStrategyInitSerializer(HyperparameterOptimizationStrategyInitSer
         fields = HyperparameterOptimizationStrategyInitSerializer.Meta.fields
 
 
-class OptunaStrategySerializer(HyperparameterOptimizationStrategySerializer):
-    nTrials = serializers.IntegerField(min_value=1)
-
+class GridSearchStrategySerializer(GridSearchStrategyInitSerializer):
     class Meta:
-        model = OptunaStrategy
-        fields = HyperparameterOptimizationStrategySerializer.Meta.fields + ('nTrials',)
+        model = GridSearchStrategy
+        fields = GridSearchStrategyInitSerializer.Meta.fields
+
 
 class OptunaStrategyInitSerializer(HyperparameterOptimizationStrategyInitSerializer):
     nTrials = serializers.IntegerField()
@@ -123,6 +121,15 @@ class OptunaStrategyInitSerializer(HyperparameterOptimizationStrategyInitSeriali
     class Meta:
         model = OptunaStrategy
         fields = HyperparameterOptimizationStrategyInitSerializer.Meta.fields + ('nTrials',)
+
+
+class OptunaStrategySerializer(OptunaStrategyInitSerializer):
+    nTrials = serializers.IntegerField(min_value=1)
+
+    class Meta:
+        model = OptunaStrategy
+        fields = OptunaStrategyInitSerializer.Meta.fields
+
 
 class HyperparameterOptimizationStrategyPolymorphicSerializer(PolymorphicSerializer):
     model_serializer_mapping = {
@@ -146,13 +153,13 @@ class ValidationStrategySerializer(serializers.HyperlinkedModelSerializer):
         model = ValidationStrategy
         fields = ("metrics", "trainingStrategy")
 
+
 class ValidationStrategyInitSerializer(ValidationStrategySerializer):
     metrics = serializers.PrimaryKeyRelatedField(many=True, queryset=ModelPerformanceMetric.objects.all())
 
     class Meta:
         model = ValidationStrategy
-        # from ValidationStrategySerializer.Meta.fields exclude trainingStrategy
-        fields = tuple(x for x in ValidationStrategySerializer.Meta.fields if x != 'trainingStrategy') 
+        fields = tuple(x for x in ValidationStrategySerializer.Meta.fields if x != 'trainingStrategy')
 
 
 class BasicValidationStrategyInitSerializer(ValidationStrategyInitSerializer):
@@ -166,20 +173,24 @@ class BasicValidationStrategyInitSerializer(ValidationStrategyInitSerializer):
         model = BasicValidationStrategy
         fields = ValidationStrategyInitSerializer.Meta.fields + ('cvFolds', 'dataSplit')
 
+
 class BasicValidationStrategySerializer(BasicValidationStrategyInitSerializer):
     metrics = ModelPerformanceMetricSerializer(many=True)
-    
+
+
 class ValidationStrategyPolymorphicSerializer(PolymorphicSerializer):
     model_serializer_mapping = {
         BasicValidationStrategy: BasicValidationStrategySerializer,
         # Add other subclasses and their serializers here
     }
 
+
 class ValidationStrategyPolymorphicInitSerializer(PolymorphicSerializer):
     model_serializer_mapping = {
         ValidationStrategy: ValidationStrategyInitSerializer,
         BasicValidationStrategy: BasicValidationStrategyInitSerializer,
-        }
+    }
+
 
 class TrainingStrategySerializer(serializers.HyperlinkedModelSerializer):
     algorithm = AlgorithmSerializer(many=False)
@@ -187,7 +198,7 @@ class TrainingStrategySerializer(serializers.HyperlinkedModelSerializer):
     mode = AlgorithmModeSerializer(many=False)
     validationStrategies = ValidationStrategyPolymorphicSerializer(many=True, read_only=True)
     hyperParamOptStrategies = HyperparameterOptimizationStrategyPolymorphicSerializer(many=True, read_only=True)
-    
+
     class Meta:
         model = TrainingStrategy
         fields = ('id', 'algorithm', 'mode', 'parameters', 'validationStrategies', 'hyperParamOptStrategies')
@@ -203,11 +214,10 @@ class TrainingStrategyInitSerializer(TrainingStrategySerializer):
     class Meta:
         model = TrainingStrategy
         fields = TrainingStrategySerializer.Meta.fields
-    
-        
+
     def create(self, validated_data, **kwargs):
         instance = super().create(validated_data, **kwargs)
-        
+
         if 'validationStrategies' in validated_data:
             strat_data = validated_data['validationStrategies']
             for vs_data in strat_data:
@@ -230,6 +240,7 @@ class TrainingStrategyInitSerializer(TrainingStrategySerializer):
 
         return instance
 
+
 class ModelFileSerializer(serializers.HyperlinkedModelSerializer):
     model = serializers.PrimaryKeyRelatedField(many=False, required=False, queryset=Model.objects.all())
     format = ModelFileFormatSerializer(many=False, read_only=True)
@@ -248,6 +259,7 @@ class ModelFileSerializer(serializers.HyperlinkedModelSerializer):
             validated_data['note'] if 'note' in validated_data else ''
         )
 
+
 class ModelSerializer(serializers.HyperlinkedModelSerializer):
     project = serializers.PrimaryKeyRelatedField(many=False, queryset=Project.objects.all())
     trainingStrategy = TrainingStrategySerializer(many=False)
@@ -257,7 +269,22 @@ class ModelSerializer(serializers.HyperlinkedModelSerializer):
 
     def __init__(self, *args, builder_class=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.builder_class = self.instance.builder.name if self.instance and isinstance(self.instance, Model) else builder_class
+        self.builder_class = self.instance.builder.name if self.instance and isinstance(self.instance,
+                                                                                        Model) else builder_class
+
+    def is_valid(self, *, raise_exception=False):
+        ret = super().is_valid(raise_exception=raise_exception)
+        hypo_data = self.validated_data["trainingStrategy"]["hyperParamOptStrategies"]
+        if len(hypo_data) > 0:
+            self.validated_data["trainingStrategy"]["hyperParamOptStrategies"] = hypo_data[0]
+            val_data = self.validated_data["trainingStrategy"]["validationStrategies"]
+            if len(val_data) > 1:
+                raise serializers.ValidationError(
+                    "Only one validation strategy is allowed when using hyperparameter optimization.")
+            if len(hypo_data) > 1:
+                raise serializers.ValidationError("Only one hyperparameter optimization strategy is allowed.")
+
+        return ret
 
     # def validate(self, attrs):
     #     if "modelFile" in attrs and "validationStrategy" in attrs:
@@ -267,7 +294,7 @@ class ModelSerializer(serializers.HyperlinkedModelSerializer):
     #     return super().validate(attrs)
 
     @staticmethod
-    def saveParameters(strat_instance : TrainingStrategy, strat_data):
+    def saveParameters(strat_instance: TrainingStrategy, strat_data):
         if 'parameters' not in strat_data:
             return
 
@@ -292,7 +319,9 @@ class ModelSerializer(serializers.HyperlinkedModelSerializer):
 
     class Meta:
         model = Model
-        fields = ('id', 'name', 'description', 'created', 'updated', 'project', 'trainingStrategy', 'modelFile', 'build', 'taskID')
+        fields = (
+        'id', 'name', 'description', 'created', 'updated', 'project', 'trainingStrategy', 'modelFile', 'build',
+        'taskID')
         read_only_fields = ('id', 'created', 'updated', 'modelFile', 'taskID')
 
     def useBuilder(self, builder_class):
@@ -300,21 +329,23 @@ class ModelSerializer(serializers.HyperlinkedModelSerializer):
 
     def create(self, validated_data, **kwargs):
         instance = self.Meta.model.objects.create(
-                name=validated_data['name'],
-                description=validated_data['description'] if 'description' in validated_data else '',
-                project=validated_data['project'],
-                builder=ModelBuilder.objects.get_or_create(
-                    name=self.builder_class if type(self.builder_class) == str else self.builder_class.__name__
-                )[0],
-                **kwargs
+            name=validated_data['name'],
+            description=validated_data['description'] if 'description' in validated_data else '',
+            project=validated_data['project'],
+            builder=ModelBuilder.objects.get_or_create(
+                name=self.builder_class if type(self.builder_class) == str else self.builder_class.__name__
+            )[0],
+            **kwargs
         )
         instance.build = validated_data["build"]
         return instance
+
 
 class DataSplitSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
         model = DataSplit
         fields = ('id',)
+
 
 class RandomSplitSerializer(DataSplitSerializer):
     class Meta:

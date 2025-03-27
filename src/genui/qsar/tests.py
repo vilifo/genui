@@ -90,7 +90,7 @@ class QSARModelInit(CompoundsMixIn):
                 testFraction=0.2
             )
 
-        if not hyperParamOptStrategies:
+        if hyperParamOptStrategies is None:
             hyperParamOptStrategies = []
 
         post_data = {
@@ -531,5 +531,6 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
                     "resourcetype": "GridSearchStrategy",
                     "searchSpace": {"n_estimators": [150, 200]},
                     "scoreAggregation": ValueAggregationFunction.objects.get(name="Mean").id
+                    # "scoreAggregation": "mean"
                 }],)
 

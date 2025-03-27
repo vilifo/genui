@@ -15,3 +15,17 @@ class Median(bases.ValueAggregationFunction):
 
     def __call__(self, values):
         return np.median(values)
+
+class Min(bases.ValueAggregationFunction):
+    name = "Min"
+    description = "Minimum value of the input values."
+
+    def __call__(self, values):
+        return np.min(values)
+
+class Max(bases.ValueAggregationFunction):
+    name = "Max"
+    description = "Maximum value of the input values."
+
+    def __call__(self, values):
+        return np.max(values)

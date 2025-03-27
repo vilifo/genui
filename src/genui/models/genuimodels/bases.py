@@ -60,9 +60,9 @@ class Algorithm(ABC):
     @classmethod
     def getFileFormats(cls, attach_to=None):
         formats = [models.ModelFileFormat.objects.get_or_create(
-                    fileExtension=".joblib.gz",
-                    description="A compressed joblib file."
-                    )[0],]
+            fileExtension=".joblib.gz",
+            description="A compressed joblib file."
+        )[0], ]
         if attach_to:
             cls.attachToInstance(attach_to, formats, attach_to.fileFormats)
         return formats
@@ -84,7 +84,8 @@ class Algorithm(ABC):
             ret.corePackage = corePackage
             ret.save()
 
-        cls.django_modes = cls.attachModesToModel(ret, cls.getModes()) # TODO: this should use the same pattern as the file formats method
+        cls.django_modes = cls.attachModesToModel(ret,
+                                                  cls.getModes())  # TODO: this should use the same pattern as the file formats method
         cls.django_file_formats = cls.getFileFormats(attach_to=ret)
         cls.django_model = ret
         cls.django_parameters = cls.getParams()
@@ -96,7 +97,7 @@ class Algorithm(ABC):
         current_params = models.ModelParameter.objects.filter(
             algorithm=cls.django_model
         )
-        missing_params = { x for x in models.ModelParameter.objects.filter(
+        missing_params = {x for x in models.ModelParameter.objects.filter(
             algorithm=cls.django_model
         ).all()}
         for param_name in cls.parameters:
@@ -128,7 +129,8 @@ class Algorithm(ABC):
 
         if missing_params:
             for param in missing_params:
-                logging.warning(f"Parameter {param} no longer present for algorithm {cls}. It will be removed from the database and from all prior models that use it.")
+                logging.warning(
+                    f"Parameter {param} no longer present for algorithm {cls}. It will be removed from the database and from all prior models that use it.")
                 param.delete()
 
         return ret
@@ -138,7 +140,7 @@ class Algorithm(ABC):
         self.instance = self.builder.instance
         self.trainingInfo = self.builder.training
         self.validationInfo = self.builder.validations
-        self.params = {x.parameter.name : x.value for x in self.trainingInfo.parameters.all()}
+        self.params = {x.parameter.name: x.value for x in self.trainingInfo.parameters.all()}
         self.mode = self.trainingInfo.mode
         self.callback = callback
         self._model = None
@@ -152,7 +154,7 @@ class Algorithm(ABC):
             raise LookupError("Builder was destroyed before being referenced!")
 
     def getSerializer(self):
-        return lambda filename : joblib.dump(
+        return lambda filename: joblib.dump(
             self.model
             , filename
         )
@@ -161,7 +163,7 @@ class Algorithm(ABC):
         self.getSerializer()(filename)
 
     def getDeserializer(self):
-        return lambda filename : joblib.load(filename)
+        return lambda filename: joblib.load(filename)
 
     def deserialize(self, filename):
         self._model = self.getDeserializer()(filename)
@@ -173,11 +175,11 @@ class Algorithm(ABC):
         pass
 
     @abstractmethod
-    def fit(self, X : DataFrame, y : Series):
+    def fit(self, X: DataFrame, y: Series):
         pass
 
     @abstractmethod
-    def predict(self, X : DataFrame) -> Series:
+    def predict(self, X: DataFrame) -> Series:
         pass
 
 
@@ -227,7 +229,7 @@ class ValidationMetric(ABC):
         return ret
 
     @abstractmethod
-    def __call__(self, true_vals : Series, predicted_vals : Series):
+    def __call__(self, true_vals: Series, predicted_vals: Series):
         pass
 
     @staticmethod
@@ -236,17 +238,18 @@ class ValidationMetric(ABC):
 
     def save(
             self,
-            true_vals : Series,
-            predicted_vals : Series,
+            true_vals: Series,
+            predicted_vals: Series,
             perfClass=models.ModelPerformance,
             **kwargs
     ):
         return perfClass.objects.create(
-                    metric=models.ModelPerformanceMetric.objects.get(name=self.name),
-                    value=self(true_vals, predicted_vals),
-                    model=self.builder.instance,
-                    **kwargs
-                )
+            metric=models.ModelPerformanceMetric.objects.get(name=self.name),
+            value=self(true_vals, predicted_vals),
+            model=self.builder.instance,
+            **kwargs
+        )
+
 
 class ValueAggregationFunction(ABC):
     name = None
@@ -276,7 +279,7 @@ class ValueAggregationFunction(ABC):
         return ret
 
     @abstractmethod
-    def __call__(self, predicted_vals : Series | np.ndarray):
+    def __call__(self, predicted_vals: Series | np.ndarray):
         pass
 
 
@@ -312,19 +315,32 @@ class ModelBuilder(ABC):
             corePackage = self.corePackage
         try:
             return findSubclassByID(
-            ValidationMetric
-            , importFromPackage(corePackage, "metrics")
-            , "name"
-            , name
-        )
+                ValidationMetric
+                , importFromPackage(corePackage, "metrics")
+                , "name"
+                , name
+            )
+        except LookupError:
+            return None
+
+    def findAggregationFunctionClass(self, name, corePackage=None):
+        if not corePackage:
+            corePackage = self.corePackage
+        try:
+            return findSubclassByID(
+                ValueAggregationFunction
+                , importFromPackage(corePackage, "aggregations")
+                , "name"
+                , name
+            )
         except LookupError:
             return None
 
     def __init__(
             self,
-            instance : models.Model,
-            progress = None,
-            onFit = None
+            instance: models.Model,
+            progress=None,
+            onFit=None
     ):
         self.instance = instance
 
@@ -340,7 +356,11 @@ class ModelBuilder(ABC):
         self.hyper_param_opt = self.training.hyperParamOptStrategies.first()
         self.metricClasses = []
         for validation in self.validations:
-            self.metricClasses.extend([self.findMetricClass(x.name, x.corePackage) for x in validation.metrics.all() if x])
+            self.metricClasses.extend(
+                [self.findMetricClass(x.name, x.corePackage) for x in validation.metrics.all() if x])
+        if self.hyper_param_opt:
+            aggregation = self.hyper_param_opt.scoreAggregation.name
+            self.hyper_param_aggregator = self.findAggregationFunctionClass(aggregation)
         self.progress = progress
         self.errors = []
 
@@ -378,7 +398,8 @@ class ModelBuilder(ABC):
 
     def saveFile(self):
         if not self.instance.modelFile:
-            model_format = self.training.algorithm.fileFormats.all()[0] # FIXME: this should be changed once we expose the file formats in the training strategy
+            model_format = self.training.algorithm.fileFormats.all()[
+                0]  # FIXME: this should be changed once we expose the file formats in the training strategy
             ModelFile.create(
                 self.instance,
                 f'main.{model_format.fileExtension}',
@@ -388,6 +409,7 @@ class ModelBuilder(ABC):
             )
         path = self.instance.modelFile.path
         self.model.serialize(path)
+
 
 class ProgressMixIn:
 
@@ -403,7 +425,7 @@ class ProgressMixIn:
         if self.currentProgress < len(self.progressStages):
             if self.progress:
                 self.progress.set_progress(
-                    self.currentProgress+1
+                    self.currentProgress + 1
                     , len(self.progressStages)
                     , description=self.progressStages[self.currentProgress]
                 )
@@ -413,14 +435,15 @@ class ProgressMixIn:
         self.currentProgress += 1
         print(f"{self.currentProgress}/{len(self.progressStages)}")
 
+
 class ValidationMixIn:
 
     def fitAndValidate(
             self,
-            X_train : DataFrame,
-            y_train : Series,
-            X_validated : DataFrame,
-            y_validated : Series,
+            X_train: DataFrame,
+            y_train: Series,
+            X_validated: DataFrame,
+            y_validated: Series,
             y_predicted=None,
             perfClass=models.ModelPerformance,
             *args,
@@ -431,7 +454,6 @@ class ValidationMixIn:
             model.fit(X_train, y_train)
             y_predicted = model.predict(X_validated)
         self.validate(y_validated, y_predicted, perfClass, *args, **kwargs)
-
 
     def validate(
             self,
@@ -452,9 +474,10 @@ class ValidationMixIn:
                 traceback.print_exc()
                 continue
 
+
 class PredictionMixIn:
 
-    def predict(self, X : DataFrame = None) -> Series:
+    def predict(self, X: DataFrame = None) -> Series:
         if X is None:
             X = self.getX()
         # TODO: check if X is valid somehow
@@ -462,6 +485,7 @@ class PredictionMixIn:
             return self.model.predict(X)
         else:
             raise ModelNotFittedException("The model is not trained or loaded. Invalid call to 'predict'.")
+
 
 class ModelNotFittedException(GenUIException):
     pass

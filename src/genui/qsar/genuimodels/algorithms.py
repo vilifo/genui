@@ -54,6 +54,14 @@ class QSPRPredScikitModel(Algorithm): # TODO: testy upload modelu ...
         if self.callback:
             self.callback(self)
 
+    def qspr_fit(self, *args, **kwargs):
+        """Fit the model using the QSPR algorithm."""
+        self.model.fit(*args, **kwargs)
+
+    def qspr_predict(self, *args, **kwargs):
+        """Predict using the QSPR algorithm."""
+        return self.model.predict(*args, **kwargs)
+
     def predict(self, X: DataFrame) -> Series:
         is_regression = self.mode.name == self.REGRESSION
         if self.model:

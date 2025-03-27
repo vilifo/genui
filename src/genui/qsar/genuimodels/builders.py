@@ -12,7 +12,7 @@ import re
 from abc import ABC
 import pandas as pd
 from qsprpred.data.descriptors.sets import DataFrameDescriptorSet
-from qsprpred.models import BaseMonitor, CrossValAssessor
+from qsprpred.models import BaseMonitor, CrossValAssessor, TestSetAssessor
 from rdkit import Chem
 from pandas import DataFrame, Series
 from sklearn.model_selection import KFold, StratifiedKFold
@@ -30,17 +30,21 @@ from .bases import DescriptorBuilderMixIn
 from qsprpred.data.sampling import splits
 from qsprpred.data import QSPRDataset
 
+
 def camel_to_snake(name):
     return re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
+
 
 def snake_to_camel(name):
     words = name.split('_')
     return words[0] + ''.join(word.capitalize() for word in words[1:])
 
+
 class RecordProgressMonitor(BaseMonitor):
     def __init__(self, on_fold_start=None):
         super().__init__()
         self.on_fold_start = on_fold_start if on_fold_start else lambda: None
+        # TODO: Add record progress to other methods
 
     def onFoldStart(
             self,
@@ -54,11 +58,38 @@ class RecordProgressMonitor(BaseMonitor):
         self.on_fold_start()
 
 
+class MetricsAggregator:
+    @property
+    def perfClass(self):
+        return self._perfClass
+
+    @perfClass.setter
+    def perfClass(self, value):
+        self._perfClass = value
+
+    def __init__(self, validation_metric, metrics, builder, perfClass=core_models.ModelPerformance):
+        self.validation_metric = validation_metric
+        self.metricClasses = metrics
+        self._perfClass = perfClass
+        self.builder = builder
+
+    def __call__(self, y_true, y_pred):
+        for metric_class in self.metricClasses:
+            try:
+                metric_class(self.builder).save(y_true, y_pred, self.perfClass)
+            except Exception as exp:
+                print("Failed to obtain values for metric: ", metric_class.name)
+                self.builder.errors.append(exp)
+                traceback.print_exc()
+                continue
+        return self.validation_metric(self.builder)(y_true, y_pred)
+
 
 class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationMixIn, ProgressMixIn, ModelBuilder, ABC):
     def __init__(self, instance: qsar_models.Model, progress=None, onFitCall=None, validations=None):
         super().__init__(instance, progress, onFitCall)
-        self.validations = validations if validations and len(validations) > 0 else self.instance.trainingStrategy.validationStrategies.all()
+        self.validations = validations if validations and len(
+            validations) > 0 else self.instance.trainingStrategy.validationStrategies.all()
 
     def build(self) -> qsar_models.QSARModel:
         if not self.validations:
@@ -73,7 +104,7 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
         ]
 
         for validation in self.validations:
-            self.progressStages.extend([f"CV fold {x+1}" for x in range(validation.cvFolds)])
+            self.progressStages.extend([f"CV fold {x + 1}" for x in range(validation.cvFolds)])
         self.progressStages.extend(["Fitting model on the training set...", "Validating on test set..."])
         self.progressStages.extend(["Fitting the final model...", "Saving the model..."])
 
@@ -86,12 +117,17 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
         X = self.X
         y = pd.DataFrame(self.y, columns=["activity"])
         if self.training.mode.name == Algorithm.CLASSIFICATION:
-            target_props = {"name": "activity", "task": "SINGLECLASS", "th": [self.training.activityThreshold],}
+            target_props = {"name": "activity", "task": "SINGLECLASS", "th": [self.training.activityThreshold], }
         else:
             target_props = {"name": "activity", "task": "REGRESSION"}
         dataset = QSPRDataset("Dataset", [target_props],
                               df=pd.concat([mols, y], axis=1))
-        dataset.prepareDataset(feature_calculators=[DataFrameDescriptorSet(df=pd.concat([X, mols], axis=1), joining_cols=["SMILES"])])
+        dataset.prepareDataset(
+            feature_calculators=[DataFrameDescriptorSet(df=pd.concat([X, mols], axis=1), joining_cols=["SMILES"])])
+
+        metrics_aggregator = MetricsAggregator([m for m in self.metricClasses], self, core_models.ModelPerformanceCV)
+        monitor = RecordProgressMonitor(self.recordProgress())
+        self._model = self.algorithmClass(self)
 
         for validation in self.validations:
             if hasattr(validation, 'dataSplit') and hasattr(validation, 'cvFolds'):
@@ -103,6 +139,7 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
                 split_instance = split_instance(**split_params)
 
                 dataset.split(split_instance)
+
                 X_train, y_train = dataset.X, dataset.y["activity"]
                 X_valid, y_valid = dataset.X_ind, dataset.y_ind["activity"]
 
@@ -112,27 +149,36 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
                     folds = KFold(validation.cvFolds).split(X_train)
                 else:
                     folds = StratifiedKFold(validation.cvFolds).split(X_train, y_train)
-
-                for i, (train_index, test_index) in enumerate(folds):
-                    self.recordProgress()
-                    self.fitAndValidate(
-                        X_train.iloc[train_index], y_train.iloc[train_index],
-                        X_train.iloc[test_index], y_train.iloc[test_index],
-                        perfClass=core_models.ModelPerformanceCV, 
-                        fold=i + 1
-                    )
-
-                self.fitAndValidate(X_train, y_train, X_valid, y_valid)
+                cva = CrossValAssessor(metrics_aggregator,
+                                       folds,
+                                       monitor,
+                                       use_proba=self.training.mode.name == Algorithm.CLASSIFICATION,)
+                cva(self.model.model, dataset, False, )
+                # for i, (train_index, test_index) in enumerate(folds):
+                #     self.recordProgress()
+                #     self.fitAndValidate(
+                #         X_train.iloc[train_index], y_train.iloc[train_index],
+                #         X_train.iloc[test_index], y_train.iloc[test_index],
+                #         perfClass=core_models.ModelPerformanceCV,
+                #         fold=i + 1
+                #     )
+                # self.recordProgress()
+                # self.fitAndValidate(X_train, y_train, X_valid, y_valid)
+                tsa = TestSetAssessor(metrics_aggregator,
+                                      monitor,
+                                      use_proba=self.training.mode.name == Algorithm.CLASSIFICATION,)
+                tsa(self.model.model, dataset, False)
 
         # Final model fitting on all data
-        final_model = self.algorithmClass(self)
-        self.recordProgress()
-        final_model.fit(dataset.X, dataset.y["activity"])
-        self._model = final_model
+        # final_model = self.algorithmClass(self)
+        # self.recordProgress()
+        # final_model.fit(dataset.X, dataset.y["activity"])
+        # self._model = final_model
+        self._model = self.model.qspr_fit(dataset, monitor)
 
         # Final validation (optional, as it's not truly a validation)
         self.recordProgress()
-        y_predicted = final_model.predict(dataset.X)
+        y_predicted = self.model.qspr_predict(dataset.X)
         for validation in self.validations:
             self.validate(validation, dataset.y["activity"], y_predicted)
 
@@ -141,7 +187,7 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
         self.saveFile()
         return self.instance
 
-    def save_model(self): # Backup, for future endeavours
+    def save_model(self):  # Backup, for future endeavours
         file = ModelFile.create(
             self.instance,
             f'{self.model.model_name}.tar.gz',
@@ -168,13 +214,13 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
 
         self.calculateDescriptors(smiles)
         real_predictions = list(self.predict(self.getX()))
-        for idx,prediction in enumerate(predictions):
+        for idx, prediction in enumerate(predictions):
             if idx not in failed_indices:
                 predictions[idx] = real_predictions.pop(0)
         assert len(real_predictions) == 0
         return np.array(predictions)
-    
-    def populateActivitySet(self, aset : qsar_models.ModelActivitySet):
+
+    def populateActivitySet(self, aset: qsar_models.ModelActivitySet):
         if not self.instance.predictionsType:
             raise Exception("The activity type for QSAR model predictions is not specified.")
 
@@ -192,18 +238,17 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
             )
 
         return aset.activities.all()
-    
-    def fitAndValidate(self, X_train, y_train, X_valid, y_valid, y_predicted=None, perfClass=core_models.ModelPerformance, *args, **kwargs):
+
+    def fitAndValidate(self, X_train, y_train, X_valid, y_valid, y_predicted=None,
+                       perfClass=core_models.ModelPerformance, *args, **kwargs):
         if not y_predicted:
             model = self.algorithmClass(self)
             model.fit(X_train, y_train)
             y_predicted = model.predict(X_valid)
         for validation in self.validations:
             self.validate(validation, y_valid, y_predicted, perfClass, *args, **kwargs)
-            
-    def validate(self, validation_strategy, y_validated, y_predicted, perfClass=core_models.ModelPerformance, *args, **kwargs):
-        if not validation_strategy:
-            raise ImproperlyConfigured(f"No validation strategy is set for model: {repr(self.instance)}")
+
+    def validate(self, y_validated, y_predicted, perfClass=core_models.ModelPerformance, *args, **kwargs):
         for metric_class in self.metricClasses:
             try:
                 metric_class(self).save(y_validated, y_predicted, perfClass, *args, **kwargs)
@@ -230,7 +275,8 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
 
             compounds, activities, units = activity_set.cleanForModelling(activity_type)
             if not len(compounds) == len(activities):
-                raise Exception(f'Number of compounds in a QSAR model ({len(compounds)}) is different from the set of activities assigned to them ({len(activities)}). Something went wrong when the data was cleaned for modeling.')
+                raise Exception(
+                    f'Number of compounds in a QSAR model ({len(compounds)}) is different from the set of activities assigned to them ({len(activities)}). Something went wrong when the data was cleaned for modeling.')
             activities = Series(activities)
 
             if self.training.mode.name == Algorithm.CLASSIFICATION:
@@ -248,5 +294,5 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
             self.y = activities
             return self.y, compounds
 
-    def load_model(self): # Backup, for future endeavours
+    def load_model(self):  # Backup, for future endeavours
         self._model = self.model.load_model(self.instance.files.filter(note=self.model.model_name)[0].path)
