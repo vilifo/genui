@@ -16,6 +16,7 @@ from django.db import transaction
 from pandas import DataFrame, Series
 
 from django.core.files.base import ContentFile
+from qsprpred.data import QSPRDataset, MoleculeTable
 
 from genui.models import models
 from genui.utils.exceptions import GenUIException
@@ -477,12 +478,11 @@ class ValidationMixIn:
 
 class PredictionMixIn:
 
-    def predict(self, X: DataFrame = None) -> Series:
-        if X is None:
-            X = self.getX()
-        # TODO: check if X is valid somehow
+    def predict(self, dataset: DataFrame | QSPRDataset | np.ndarray = None) -> Series:
         if self.model:
-            return self.model.predict(X)
+            if dataset is None:
+                return self.predictMols(dataset)
+            return self.model.predict(dataset)
         else:
             raise ModelNotFittedException("The model is not trained or loaded. Invalid call to 'predict'.")
 

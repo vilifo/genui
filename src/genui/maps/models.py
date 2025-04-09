@@ -6,7 +6,7 @@ from django.db.models import Avg
 
 from genui.compounds.models import MolSet, Molecule
 from genui.models.models import Model, TrainingStrategy, ModelFile
-from genui.qsar.models import DescriptorGroup
+from genui.qsar.models import EmbeddingCalculator
 
 from django_rdkit import models as djrdkit
 
@@ -146,5 +146,5 @@ class Point(models.Model):
         return self.molecule.providers.filter(id__in=[x.id for x in self.map.molsets.all()])
 
 class MappingStrategy(TrainingStrategy):
-    descriptors = models.ManyToManyField(DescriptorGroup)
+    descriptors = models.ManyToManyField(EmbeddingCalculator)
 

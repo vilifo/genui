@@ -19,7 +19,7 @@ router = routers.DefaultRouter()
 router.register(r'models', views.QSARModelViewSet, basename='model')
 router.register(r'algorithms',views.QSARAlgorithmViewSet, basename='algorithm')
 router.register(r'metrics', views.QSARMetricsViewSet, basename='metric')
-router.register(r'descriptors', views.DescriptorGroupsViewSet, basename='descriptor')
+router.register(r'descriptors', views.EmbeddingGroupsViewSet, basename='descriptor')
 # router.register(r'predictions', views.ModelPredictionsViewSet, basename='prediction')
 
 

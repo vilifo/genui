@@ -10,7 +10,7 @@ from genui.compounds.models import MolSet, Molecule
 from genui.compounds.serializers import GenericMolSetSerializer, MoleculeSerializer
 from genui.models.serializers import ModelSerializer, TrainingStrategySerializer, TrainingStrategyInitSerializer, \
     ModelFileSerializer
-from genui.qsar.serializers import DescriptorGroupSerializer
+from genui.qsar.serializers import EmbeddingCalculatorSerializer as DescriptorGroupSerializer
 from . import models
 
 class MappingStrategySerializer(TrainingStrategySerializer):
@@ -21,7 +21,7 @@ class MappingStrategySerializer(TrainingStrategySerializer):
         fields = TrainingStrategySerializer.Meta.fields + ("descriptors",)
 
 class MappingStrategyInitSerializer(TrainingStrategyInitSerializer):
-    descriptors = serializers.PrimaryKeyRelatedField(many=True, queryset=models.DescriptorGroup.objects.all(), allow_empty=False)
+    descriptors = serializers.PrimaryKeyRelatedField(many=True, queryset=models.EmbeddingCalculator.objects.all(), allow_empty=False)
 
     class Meta:
         model = models.MappingStrategy
@@ -62,7 +62,7 @@ class MapInitSerializer(MapSerializer):
             algorithm=ts_data['algorithm'],
             mode=ts_data['mode'],
         )
-        ts.descriptors.set(ts_data['descriptors'])
+        ts.embeddings.set(ts_data['descriptors'])
         ts.save()
         
         # Save parameters

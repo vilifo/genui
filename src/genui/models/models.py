@@ -303,13 +303,13 @@ class ValidationStrategy(PolymorphicModel):
 
 class HyperparameterOptimizationStrategy(PolymorphicModel):
     searchSpace = models.JSONField(blank=True)
-    scoreAggregation = models.ForeignKey(ValueAggregationFunction, null=False, on_delete=models.CASCADE, related_name='hyperParamOptStrategy')
+    scoreAggregation = models.ForeignKey(ValueAggregationFunction, null=False, on_delete=models.CASCADE, related_name='hyperParamOptStrategies')
     trainingStrategy = models.ForeignKey(TrainingStrategy, null=False, on_delete=models.CASCADE, related_name='hyperParamOptStrategies')
 
-class OptunaStrategy(HyperparameterOptimizationStrategy):
+class OptunaOptimization(HyperparameterOptimizationStrategy):
     nTrials = models.IntegerField(blank=False)
 
-class GridSearchStrategy(HyperparameterOptimizationStrategy):
+class GridSearchOptimization(HyperparameterOptimizationStrategy):
     pass
 
 class CV(ValidationStrategy):

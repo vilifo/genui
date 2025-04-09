@@ -6,6 +6,7 @@ On: 4/30/20, 8:55 AM
 """
 
 import sys
+import re
 import pkgutil
 import importlib
 import inspect
@@ -208,16 +209,25 @@ def get_sklearn_models():
 R, C = get_sklearn_models()
 SKLEARN_MODELS = R | C
 
-def get_model_params(model_class):
+def get_default_params(class_=None, module_name=None):
+    if class_ is None:
+        class_ = module_name.split('.')[-1]
+        module_name = '.'.join(module_name.split('.')[:-1])
     params = {}
-    model_class = SKLEARN_MODELS[model_class]
-    module = importlib.import_module(".".join(model_class.rsplit('.')[:-1]))
-    model_class = model_class.rsplit('.')[-1]
-    model_class = getattr(module, model_class)
-    signature = inspect.signature(model_class)
+    module = importlib.import_module(module_name)
+    class_ = getattr(module, class_)
+    signature = inspect.signature(class_)
     for param_name, param in signature.parameters.items():
         if param.default is inspect.Parameter.empty:
             params[param_name] = None
         else:
             params[param_name] = param.default
     return params
+
+def camel_to_snake(name):
+    return re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
+
+
+def snake_to_camel(name):
+    words = name.split('_')
+    return words[0] + ''.join(word.capitalize() for word in words[1:])

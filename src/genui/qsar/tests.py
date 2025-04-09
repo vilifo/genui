@@ -11,7 +11,7 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 from genui.compounds.models import ActivityTypes, ActivityUnits
 from genui.compounds.extensions.chembl.tests import CompoundsMixIn
-from genui.qsar.models import QSARModel, DescriptorGroup, ModelActivitySet
+from genui.qsar.models import QSARModel, EmbeddingCalculator, ModelActivitySet
 from genui.models.models import ModelPerformance, Algorithm, AlgorithmMode, ModelFile, ModelPerformanceMetric, \
     BasicValidationStrategy, RandomSplit, ValueAggregationFunction
 from .genuimodels import builders
@@ -24,7 +24,7 @@ class QSARModelInit(CompoundsMixIn):
     This class sets up the necessary data structures and methods
     for creating and testing QSAR models.
     """
-    
+
     def setUp(self):
         super().setUp()
         self.project = self.createProject()
@@ -32,19 +32,19 @@ class QSARModelInit(CompoundsMixIn):
             reverse('chemblSet-list'),
             {
                 "targets": ["CHEMBL251"],
-                "maxPerTarget" : 30
+                "maxPerTarget": 30
             }
         )
 
     def createTestQSARModel(
-        
+
             self,
             activitySet=None,
             activityType=None,
             mode=None,
             algorithm=None,
             parameters=None,
-            descriptors=None,
+            embeddings=None,
             metrics=None,
             dataSplit=None,
             hyperParamOptStrategies=None,
@@ -59,13 +59,13 @@ class QSARModelInit(CompoundsMixIn):
             mode (AlgorithmMode, optional): The mode of the algorithm.
             algorithm (Algorithm, optional): The algorithm to use.
             parameters (dict, optional): Algorithm parameters.
-            descriptors (list, optional): List of descriptors.
+            embeddings (list, optional): List of embeddings.
             metrics (list, optional): List of performance metrics.
 
         Returns:
             QSARModel: The created QSAR model instance.
         """
-        
+
         if not activitySet:
             activitySet = self.molset.activities.all()[0]
         if not activityType:
@@ -76,10 +76,11 @@ class QSARModelInit(CompoundsMixIn):
             algorithm = Algorithm.objects.get(name="QSPRPredScikitModel")
         if not parameters:
             parameters = {"alg": "RandomForestClassifier",
-                          "parameters": json.dumps({"n_estimators": 150,})
-            }
-        if not descriptors:
-            descriptors = [DescriptorGroup.objects.get(name="MORGANFP")]
+                          "parameters": json.dumps({"n_estimators": 150, })
+                          }
+        if not embeddings:
+            embeddings = [
+                EmbeddingCalculator.objects.get(name="MorganFP")]
         if not metrics:
             metrics = [
                 ModelPerformanceMetric.objects.get(name="MCC"),
@@ -89,8 +90,7 @@ class QSARModelInit(CompoundsMixIn):
             dataSplit = RandomSplit.objects.create(
                 testFraction=0.2
             )
-
-        if hyperParamOptStrategies is None:
+        if not hyperParamOptStrategies:
             hyperParamOptStrategies = []
 
         post_data = {
@@ -102,8 +102,8 @@ class QSARModelInit(CompoundsMixIn):
                 "algorithm": algorithm.id,
                 "parameters": parameters,
                 "mode": mode.id,
-                "descriptors": [
-                    x.id for x in descriptors
+                "embeddings": [
+                    x.id for x in embeddings
                 ],
                 "activityThreshold": 6.5,
                 "activitySet": activitySet.id,
@@ -140,7 +140,7 @@ class QSARModelInit(CompoundsMixIn):
         Returns:
             ModelActivitySet: The resulting set of predicted activities.
         """
-        
+
         post_data = {
             "name": f"Predictions using {model.name}",
             "molecules": to_predict.id
@@ -159,7 +159,7 @@ class QSARModelInit(CompoundsMixIn):
 
         return instance
 
-    def uploadModel(self, filePath, algorithm, mode, descriptors, predictionsType, predictionsUnits, parameters):
+    def uploadModel(self, filePath, algorithm, mode, embeddings, predictionsType, predictionsUnits, parameters):
         """
         Upload a pre-trained model file and create a corresponding QSAR model.
 
@@ -167,27 +167,27 @@ class QSARModelInit(CompoundsMixIn):
             filePath (str): Path to the model file.
             algorithm (Algorithm): The algorithm used in the model.
             mode (AlgorithmMode): The mode of the algorithm.
-            descriptors (list): List of descriptors used in the model.
+            embeddings (list): List of embeddings used in the model.
             predictionsType (str): Type of predictions the model makes.
             predictionsUnits (str): Units of the predictions.
 
         Returns:
             QSARModel: The created QSAR model instance.
         """
-        
+
         create_url = reverse('model-list')
         post_data = {
             "name": "Test Model",
             "description": "test description",
             "project": self.project.id,
-            "build" : False,
+            "build": False,
             "predictionsType": predictionsType,
             "predictionsUnits": predictionsUnits,
             "trainingStrategy": {
                 "algorithm": algorithm.id,
                 "mode": mode.id,
-                "descriptors": [
-                  x.id for x in descriptors
+                "embeddings": [
+                    x.id for x in embeddings
                 ],
                 "parameters": parameters,
             },
@@ -202,7 +202,7 @@ class QSARModelInit(CompoundsMixIn):
         response = self.client.post(
             url,
             data={
-                "file" : open(filePath, "rb"),
+                "file": open(filePath, "rb"),
                 "kind": ModelFile.MAIN,
             },
             format='multipart'
@@ -216,6 +216,7 @@ class QSARModelInit(CompoundsMixIn):
 
         return instance
 
+
 class ModelInitTestCase(QSARModelInit, APITestCase):
     """Test case for QSAR model initialization and basic functionality."""
 
@@ -227,7 +228,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         temp_dir = tempfile.TemporaryDirectory()
         with tarfile.open(path, 'r:*') as tar_ref:
             tar_ref.extractall(temp_dir.name)
-        
+
         model_alg_major = "QSPRPredScikitModel"
         model_alg_minor = "RandomForestClassifier"
         model_name = f"{model_alg_major}_{model_alg_minor}"
@@ -257,7 +258,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             instance_first.modelFile.path,
             instance_first.trainingStrategy.algorithm,
             instance_first.trainingStrategy.mode,
-            [DescriptorGroup.objects.get(name='MORGANFP')],
+            [EmbeddingCalculator.objects.get(name='MorganFP')],
             instance_first.predictionsType.value,
             instance_first.predictionsUnits.value if instance_first.predictionsUnits else None,
             {"alg": "RandomForestClassifier",
@@ -266,9 +267,9 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         )
 
         builder = builders.BasicQSARModelBuilder(instance)
-        self.assertRaisesMessage(ImproperlyConfigured, "You cannot build a QSAR model without validation strategies.", builder.build)
-        builder.calculateDescriptors(["CC", "CCO"])
-        print(builder.predict())
+        self.assertRaisesMessage(ImproperlyConfigured, "You cannot build a QSAR model without validation strategies.",
+                                 builder.build)
+        print(builder.predictMols(["CC", "CCO"]))
 
         activity_set = self.predictWithModel(instance, self.molset)
         for activity in activity_set.activities.all():
@@ -304,7 +305,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             model.modelFile.path,
             model.trainingStrategy.algorithm,
             model.trainingStrategy.mode,
-            [DescriptorGroup.objects.get(name='MORGANFP')],
+            [EmbeddingCalculator.objects.get(name='MorganFP')],
             model.predictionsType.value,
             model.predictionsUnits.value if model.predictionsUnits else None,
             {"alg": "RandomForestRegressor",
@@ -312,8 +313,8 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
              }
         )
         builder = builders.BasicQSARModelBuilder(model_from_file)
-        builder.calculateDescriptors(["CC", "CCO"])
-        print(builder.predict())
+        print(builder.predictMols(["CC", "CCO"]))
+
         activity_set = self.predictWithModel(model_from_file, self.molset)
         for activity_uploaded, activity_orig in zip(activity_set.activities.all(), activity_set_orig.activities.all()):
             self.assertEqual(activity_uploaded.type, model.predictionsType)
@@ -321,12 +322,12 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             self.assertEqual(activity_uploaded.type, activity_orig.type)
             self.assertEqual(activity_uploaded.units, activity_orig.units)
             self.assertEqual(activity_uploaded.value, activity_orig.value)
-            
+
     def test_training_strategy_has_validation_strategies(self):
         """Test that the training strategy of a QSAR model has validation strategies."""
         # Create a QSAR model
         model = self.createTestQSARModel()
-        
+
         # Check if the training strategy has validation strategies
         self.assertTrue(model.trainingStrategy.validationStrategies.exists())
         self.assertEqual(model.trainingStrategy.validationStrategies.count(), 1)
@@ -335,7 +336,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         """Test adding multiple validation strategies to a QSAR model."""
         # Create initial QSAR model with one validation strategy
         model = self.createTestQSARModel()
-        
+
         # Add a second validation strategy
         randomSplit = RandomSplit.objects.get_or_create(
             testFraction=0.2
@@ -347,10 +348,10 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         )
         second_strategy.metrics.set(ModelPerformanceMetric.objects.filter(name__in=["R2", "MSE"]))
         model.trainingStrategy.validationStrategies.add(second_strategy)
-        
+
         # Check if the training strategy has multiple validation strategies
         self.assertEqual(model.trainingStrategy.validationStrategies.count(), 2)
-        
+
         # Verify that the validation strategies are different
         validation_strategies = list(model.trainingStrategy.validationStrategies.all())
         self.assertNotEqual(validation_strategies[0].cvFolds, validation_strategies[1].cvFolds)
@@ -364,13 +365,14 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         - cvFolds: 3
         - validSetSize: 0.2
         - metrics: MCC, ROC
-        """        
+        """
         model = self.createTestQSARModel()
         validation_strategy = model.trainingStrategy.validationStrategies.first()
         self.assertEqual(validation_strategy.cvFolds, 3)
         self.assertEqual(validation_strategy.dataSplit.testFraction, 0.2)
-        self.assertEqual(set(validation_strategy.metrics.all()), set(ModelPerformanceMetric.objects.filter(name__in=["MCC", "ROC"]))
-        )
+        self.assertEqual(set(validation_strategy.metrics.all()),
+                         set(ModelPerformanceMetric.objects.filter(name__in=["MCC", "ROC"]))
+                         )
 
     def test_update_validation_strategy(self):
         """Test that the validation strategy parameters can be updated"""
@@ -419,20 +421,20 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         self.assertEqual(model.trainingStrategy.validationStrategies.first().dataSplit.seed, 314)
 
     def test_qsprpred_fingerprints(self):
-        fingerprints = [
-            {"fingerprint": "MorganFP", "radius": 2, "nBits": 2048,},
-            {"fingerprint": "RDKitMACCSFP",},
-            {"fingerprint": "MaccsFP", "nBits": 167},
-            {"fingerprint": "AvalonFP", "nBits": 1024},
-            {"fingerprint": "TopologicalFP", "nBits": 2048},
-            {"fingerprint": "AtomPairFP", "nBits": 2048},
-            {"fingerprint": "RDKitFP", "minPath": 1, "maxPath": 7, "nBits": 2048},
-            {"fingerprint": "PatternFP", "nBits": 2048},
-            {"fingerprint": "LayeredFP", "minPath": 1, "maxPath": 7, "nBits": 2048},
-        ]
+        fingerprints = {
+            "MorganFP": {"radius": 2, "nBits": 2048, },
+            "RDKitMACCSFP": {},
+            "MaccsFP": {"nBits": 167},
+            "AvalonFP": {"nBits": 1024},
+            "TopologicalFP": {"nBits": 2048},
+            "AtomPairFP": {"nBits": 2048},
+            "RDKitFP": {"minPath": 1, "maxPath": 7, "nBits": 2048},
+            "PatternFP": {"nBits": 2048},
+            "LayeredFP": {"minPath": 1, "maxPath": 7, "nBits": 2048},
+        }
         model = self.createTestQSARModel(
-            descriptors=[DescriptorGroup.objects.get_or_create(
-                name="QSPRPRED_FINGERPRINT", arguments=fingerprint)[0] for fingerprint in fingerprints])
+            embeddings=[EmbeddingCalculator.objects.get_or_create(
+                name=name, arguments=args)[0] for name, args in fingerprints.items()])
 
         response = self.client.get(reverse('model-list'))
         self.assertEqual(response.status_code, 200)
@@ -442,14 +444,10 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         model = QSARModel.objects.get(pk=response.data[0]['id'])
         self.predictWithModel(model, self.molset)
 
-    def test_qsprpred_descriptor_set(self):
-        fingerprints = [
-            {"descriptor_set": "DrugExPhyschem"},
-            {"descriptor_set": "RDKitDescs",},
-        ]
+    def test_qsprpred_embedding_set(self):
+        sets = ["DrugExPhyschem", "RDKitDescs",]
         model = self.createTestQSARModel(
-            descriptors=[DescriptorGroup.objects.get_or_create(
-                name="QSPRPRED_DESCRIPTOR_SET", arguments=fingerprint)[0] for fingerprint in fingerprints])
+            embeddings=[EmbeddingCalculator.objects.get(name=set_) for set_ in sets])
 
         response = self.client.get(reverse('model-list'))
         self.assertEqual(response.status_code, 200)
@@ -465,10 +463,11 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
 
     def test_incorrect_algorithm_parameters_and_combinations(self):
         response = self.createTestQSARModel(parameters={"alg": "KNeighborsClassifier",
-                                                        "parameters":json.dumps({"n_estimators": 5})},
+                                                        "parameters": json.dumps({"n_estimators": 5})},
                                             correct=False)
         self.assertEqual(response.status_code, 400)
-        self.assertEqual('Parameter n_estimators is not valid for the selected algorithm KNeighborsClassifier.', response.json()[0])
+        self.assertEqual('Parameter n_estimators is not valid for the selected algorithm KNeighborsClassifier.',
+                         response.json()[0])
 
         response = self.createTestQSARModel(mode=AlgorithmMode.objects.get(name="regression"), correct=False)
         self.assertEqual(response.status_code, 400)
@@ -498,7 +497,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         dataset = QSPRDataset("TestDataset",
                               [{"name": "activity", "task": "SINGLECLASS", "th": [6.5]}],
                               pd.DataFrame({'SMILES': compounds, 'activity': activities}),
-                              smiles_col="SMILES",)
+                              smiles_col="SMILES", )
 
         rand_split = RandomSplit(test_fraction=0.2, dataset=dataset)
         dataset.prepareDataset(
@@ -516,7 +515,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             model_path,
             Algorithm.objects.get_or_create(name="QSPRPredScikitModel")[0],
             AlgorithmMode.objects.get(name="classification"),
-            [DescriptorGroup.objects.get_or_create(
+            [EmbeddingCalculator.objects.get_or_create(
                 name="QSPRPRED_FINGERPRINT", arguments={"fingerprint": "MorganFP", "radius": 3, "nBits": 2048, })[0]],
             'Active Probability',
             None,
@@ -528,9 +527,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
 
     def test_hyperparameter_optimization(self):
         model = self.createTestQSARModel(hyperParamOptStrategies=[{
-                    "resourcetype": "GridSearchStrategy",
-                    "searchSpace": {"n_estimators": [150, 200]},
-                    "scoreAggregation": ValueAggregationFunction.objects.get(name="Mean").id
-                    # "scoreAggregation": "mean"
-                }],)
-
+            "resourcetype": "GridSearchStrategy",
+            "searchSpace": {"n_estimators": [150, 200]},
+            "scoreAggregation": ValueAggregationFunction.objects.get(name="Mean").id
+        }], )

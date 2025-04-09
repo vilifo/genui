@@ -34,8 +34,8 @@ def setup(*args, **kwargs):
             models.DataSplit,
             models.RandomSplit,
             models.HyperparameterOptimizationStrategy,
-            models.GridSearchStrategy,
-            models.OptunaStrategy,
+            models.GridSearchOptimization,
+            models.OptunaOptimization,
         ],
         force=kwargs['force']
     )

@@ -13,7 +13,8 @@ from genui.models.models import (ModelFileFormat, ModelBuilder, Model, PARAM_VAL
                                  ModelPerformanceMetric, ValidationStrategy, \
                                  AlgorithmMode, ModelParameterValue, ModelPerformance, DataSplit, RandomSplit,
                                  ValueAggregationFunction,
-                                 HyperparameterOptimizationStrategy, GridSearchStrategy, OptunaStrategy)
+                                 HyperparameterOptimizationStrategy, GridSearchOptimization, OptunaOptimization)
+from genui.models import models
 from genui.projects.models import Project
 
 
@@ -105,13 +106,13 @@ class HyperparameterOptimizationStrategyInitSerializer(HyperparameterOptimizatio
 
 class GridSearchStrategyInitSerializer(HyperparameterOptimizationStrategyInitSerializer):
     class Meta:
-        model = GridSearchStrategy
+        model = GridSearchOptimization
         fields = HyperparameterOptimizationStrategyInitSerializer.Meta.fields
 
 
 class GridSearchStrategySerializer(GridSearchStrategyInitSerializer):
     class Meta:
-        model = GridSearchStrategy
+        model = GridSearchOptimization
         fields = GridSearchStrategyInitSerializer.Meta.fields
 
 
@@ -119,7 +120,7 @@ class OptunaStrategyInitSerializer(HyperparameterOptimizationStrategyInitSeriali
     nTrials = serializers.IntegerField()
 
     class Meta:
-        model = OptunaStrategy
+        model = OptunaOptimization
         fields = HyperparameterOptimizationStrategyInitSerializer.Meta.fields + ('nTrials',)
 
 
@@ -127,22 +128,22 @@ class OptunaStrategySerializer(OptunaStrategyInitSerializer):
     nTrials = serializers.IntegerField(min_value=1)
 
     class Meta:
-        model = OptunaStrategy
+        model = OptunaOptimization
         fields = OptunaStrategyInitSerializer.Meta.fields
 
 
 class HyperparameterOptimizationStrategyPolymorphicSerializer(PolymorphicSerializer):
     model_serializer_mapping = {
-        GridSearchStrategy: GridSearchStrategySerializer,
-        OptunaStrategy: OptunaStrategySerializer,
+        GridSearchOptimization: GridSearchStrategySerializer,
+        OptunaOptimization: OptunaStrategySerializer,
     }
 
 
 class HyperparameterOptimizationStrategyPolymorphicInitSerializer(PolymorphicSerializer):
     model_serializer_mapping = {
         HyperparameterOptimizationStrategy: HyperparameterOptimizationStrategyInitSerializer,
-        GridSearchStrategy: GridSearchStrategyInitSerializer,
-        OptunaStrategy: OptunaStrategyInitSerializer,
+        GridSearchOptimization: GridSearchStrategyInitSerializer,
+        OptunaOptimization: OptunaStrategyInitSerializer,
     }
 
 
@@ -229,14 +230,16 @@ class TrainingStrategyInitSerializer(TrainingStrategySerializer):
                 validationStrategy.metrics.set(vs_data['metrics'])
                 validationStrategy.save()
 
-        if 'hyperParamOptStrategies' in validated_data and len(validated_data['hyperParamOptStrategies']) > 0:
-            strat_data = validated_data['hyperParamOptStrategies'][0]
-            hyperParamOptStrategy = HyperparameterOptimizationStrategy.objects.create(
+
+        if 'hyperParamOptStrategies' in validated_data:
+            hypo_data = validated_data['hyperParamOptStrategies'][0]
+            hyperparam_opt_strategy_class = getattr(models, hypo_data["resourcetype"])
+            hypo_data.pop("resourcetype")
+            hyperparam_opt_strategy = hyperparam_opt_strategy_class.objects.create(
                 trainingStrategy=instance,
-                searchSpace=strat_data['searchSpace'],
-                scoreAggregation=strat_data['scoreAggregation'],
+                **hypo_data
             )
-            hyperParamOptStrategy.save()
+            hyperparam_opt_strategy.save()
 
         return instance
 
@@ -274,16 +277,11 @@ class ModelSerializer(serializers.HyperlinkedModelSerializer):
 
     def is_valid(self, *, raise_exception=False):
         ret = super().is_valid(raise_exception=raise_exception)
-        hypo_data = self.validated_data["trainingStrategy"]["hyperParamOptStrategies"]
-        if len(hypo_data) > 0:
-            self.validated_data["trainingStrategy"]["hyperParamOptStrategies"] = hypo_data[0]
+        if "hyperParamOptStrategies" in self.validated_data["trainingStrategy"]:
             val_data = self.validated_data["trainingStrategy"]["validationStrategies"]
             if len(val_data) > 1:
                 raise serializers.ValidationError(
                     "Only one validation strategy is allowed when using hyperparameter optimization.")
-            if len(hypo_data) > 1:
-                raise serializers.ValidationError("Only one hyperparameter optimization strategy is allowed.")
-
         return ret
 
     # def validate(self, attrs):
@@ -320,8 +318,8 @@ class ModelSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
         model = Model
         fields = (
-        'id', 'name', 'description', 'created', 'updated', 'project', 'trainingStrategy', 'modelFile', 'build',
-        'taskID')
+            'id', 'name', 'description', 'created', 'updated', 'project', 'trainingStrategy', 'modelFile', 'build',
+            'taskID')
         read_only_fields = ('id', 'created', 'updated', 'modelFile', 'taskID')
 
     def useBuilder(self, builder_class):

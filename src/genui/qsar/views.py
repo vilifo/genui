@@ -15,7 +15,7 @@ from . import serializers
 from .tasks import buildQSARModel, predictWithQSARModel
 from genui.utils.extensions.tasks.utils import runTask
 from genui import celery_app
-from genui.utils.inspection import get_sklearn_models, get_model_params
+from genui.utils.inspection import get_sklearn_models, get_default_params
 
 
 class QSARModelViewSet(PredictMixIn, ModelViewSet):
@@ -93,13 +93,13 @@ class QSARModelViewSet(PredictMixIn, ModelViewSet):
             return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class DescriptorGroupsViewSet(
+class EmbeddingGroupsViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet
 ):
-    queryset = models.DescriptorGroup.objects.all()
-    serializer_class = serializers.DescriptorGroupSerializer
+    queryset = models.EmbeddingCalculator.objects.all()
+    serializer_class = serializers.EmbeddingCalculatorSerializer
 
 class QSARAlgorithmViewSet(AlgorithmViewSet):
 
@@ -123,8 +123,8 @@ class QSPRPredSklearnModelViewSet(viewsets.ViewSet):
         r, c = get_sklearn_models()
         data = []
         for name, cls in r.items():
-            data.append({'name': name, 'type': 'Regressor', 'params': get_model_params(cls)})
+            data.append({'name': name, 'type': 'Regressor', 'params': get_default_params(None, cls)})
         for name, cls in c.items():
-            data.append({'name': name, 'type': 'Classifier', 'params': get_model_params(cls)})
+            data.append({'name': name, 'type': 'Classifier', 'params': get_default_params(None, cls)})
         serializer = serializers.QSPRPredSklearnModelSerializer(data, many=True)
         return Response(serializer.data)

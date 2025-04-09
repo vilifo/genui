@@ -11,7 +11,7 @@ from .models import Map
 from . import views
 from genui.utils.extensions.tasks.views import ModelTasksView
 from genui.models.views import ModelFileView
-from genui.qsar.views import DescriptorGroupsViewSet
+from genui.qsar.views import EmbeddingGroupsViewSet as DescriptorGroupsViewSet
 from .apps import MapsConfig
 from genui.utils.inspection import discover_extensions_urlpatterns
 

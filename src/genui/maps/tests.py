@@ -7,7 +7,7 @@ from genui.compounds.extensions.chembl.tests import CompoundsMixIn
 from genui.compounds.models import MolSet
 from genui.maps.models import Map
 from genui.models.models import Algorithm, AlgorithmMode
-from genui.qsar.models import DescriptorGroup
+from genui.qsar.models import EmbeddingCalculator
 
 
 class MapTestCase(CompoundsMixIn, APITestCase):
@@ -42,8 +42,8 @@ class MapTestCase(CompoundsMixIn, APITestCase):
                 "parameters": {
                     "n_iter": 500,
                 },
-                "descriptors": [
-                    DescriptorGroup.objects.get(name="MORGANFP").id
+                "embeddings": [
+                    EmbeddingCalculator.objects.get(name="MORGANFP").id
                 ]
             },
             "molsets" : [x.id for x in self.molsets]

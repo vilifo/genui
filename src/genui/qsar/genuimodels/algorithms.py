@@ -13,7 +13,7 @@ from genui.models.genuimodels.bases import Algorithm, ModelNotFittedException
 from genui.models.models import ModelFileFormat
 from genui.utils.inspection import SKLEARN_MODELS
 
-class QSPRPredScikitModel(Algorithm): # TODO: testy upload modelu ...
+class QSPRPredScikitModel(Algorithm):
     name = "QSPRPredScikitModel"
     parameters = {
         "alg": {
@@ -29,11 +29,24 @@ class QSPRPredScikitModel(Algorithm): # TODO: testy upload modelu ...
     def __init__(self, builder, callback=None):
         super().__init__(builder, callback)
         self.alg = SklearnModel
-        self.temp_dir = tempfile.TemporaryDirectory()
+        self.temp_dir = builder.temp_dir
         self.sklearn_class = None
+
+    def _init_model(self):
+        if not self._model:
+            if self.sklearn_class is None:
+                self.sklearn_class = self.import_sklearn_model(self.params['alg'])
+            alg_instance = self.alg(
+                base_dir=self.temp_dir.name,
+                alg=self.sklearn_class,
+                name=self.model_name,
+                parameters=json.loads(self.params['parameters']),
+            )
+            self._model = alg_instance
 
     @property
     def model(self):
+        self._init_model()
         return self._model
 
     @property
@@ -41,26 +54,10 @@ class QSPRPredScikitModel(Algorithm): # TODO: testy upload modelu ...
         return f"{self.name}_{self.params["alg"]}"
 
     def fit(self, X: DataFrame, y: Series):
-        if self.sklearn_class is None:
-            self.sklearn_class = self.import_sklearn_model(self.params['alg'])
-        alg_instance = self.alg(
-            base_dir=self.temp_dir.name,
-            alg=self.sklearn_class,
-            name=self.model_name,
-            parameters=json.loads(self.params['parameters']),
-        )
-        self._model = alg_instance
+        self._init_model()
         self._model.estimator.fit(X.values, y.values)
         if self.callback:
             self.callback(self)
-
-    def qspr_fit(self, *args, **kwargs):
-        """Fit the model using the QSPR algorithm."""
-        self.model.fit(*args, **kwargs)
-
-    def qspr_predict(self, *args, **kwargs):
-        """Predict using the QSPR algorithm."""
-        return self.model.predict(*args, **kwargs)
 
     def predict(self, X: DataFrame) -> Series:
         is_regression = self.mode.name == self.REGRESSION
@@ -69,6 +66,12 @@ class QSPRPredScikitModel(Algorithm): # TODO: testy upload modelu ...
                 return self.model.estimator.predict(X.values)
             else:
                 return self.model.estimator.predict_proba(X.values)[:, 0]
+        else:
+            raise ModelNotFittedException("You have to fit the model first.")
+
+    def predictMols(self, smiles: list):
+        if self.model:
+            return self.model.predictMols(smiles)
         else:
             raise ModelNotFittedException("You have to fit the model first.")
 

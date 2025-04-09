@@ -1,37 +1,35 @@
 """
-genuimodels
-
 Created by: Martin Sicho
 On: 14-01-20, 10:16
 """
-import json
-from abc import ABC, abstractmethod
 
-from qsprpred.data import MoleculeTable
-
+from abc import ABC
 from genui.utils.inspection import findSubclassByID, importFromPackage
-from genui.compounds.models import Molecule
 from genui.qsar import models
-import pandas as pd
-from pandas import DataFrame
+from genui.utils.inspection import get_default_params
 
 
-class DescriptorCalculator(ABC):
-    group_name = None
+class EmbeddingCalculator(ABC):
+    name = None
+    _module = None
 
     def __init__(self, builder):
         self.builder = builder
+        self.instance = None
 
-    @abstractmethod
-    def __call__(self, smiles, **kwargs) -> DataFrame:
-        pass
+    def __call__(self, **kwargs):
+        self.instance = getattr(self._module, self.name)(**kwargs)
+        return self.instance
+
+    def get_default_parameters(self):
+        return get_default_params(self._module, self.name)
 
     @classmethod
-    def getDjangoModel(cls, corePackage, update=False) -> models.DescriptorGroup:
-        if not cls.group_name:
-            raise Exception('You have to specify a name for the descriptor group in its class "group_name" property')
+    def getDjangoModel(cls, corePackage, update=False) -> models.EmbeddingCalculator:
+        if not cls.name:
+            raise Exception('You have to specify a name for the embedding group in its class "group_name" property')
 
-        ret, ret_created = models.DescriptorGroup.objects.get_or_create(name=cls.group_name)
+        ret, ret_created = models.EmbeddingCalculator.objects.get_or_create(name=cls.name)
 
         # just return if we are not setting up a new instance
         if not ret_created and not update:
@@ -44,49 +42,15 @@ class DescriptorCalculator(ABC):
         return ret
 
 
-class DescriptorBuilderMixIn:
+class EmbeddingBuilderMixIn:
 
     @staticmethod
-    def findDescriptorClass(name, corePackage):
-        module = importFromPackage(corePackage, "descriptors")
-        return findSubclassByID(DescriptorCalculator, module, "group_name", name)
+    def findEmbeddingClass(name, corePackage):
+        module = importFromPackage(corePackage, "embeddings")
+        return findSubclassByID(EmbeddingCalculator, module, "name", name)
 
     def __init__(self, instance: models.Model, progress=None, onFitCall=None):
         super().__init__(instance, progress, onFitCall)
         self.molsets = [self.instance.molset] if hasattr(self.instance, "molset") else self.instance.molsets.all()
-        self.descriptorClasses = {self.findDescriptorClass(x.name, x.corePackage):x.arguments for x in self.training.descriptors.all()}
-
-        self.X = None
-        self.y = None
-
-    def calculateDescriptors(self, mols=None):
-        """
-        Calculate descriptors for the given molecules
-        and save them as X in this instance. If mols is None,
-        the 'self.mols' or 'self.molsets' (in the order of preference)
-        attributes will be used to get molecules for the calculation.
-
-        :param mols: List of molecules to save as X. Can be either instances of Molecule or smiles strings
-        :param kwargs: Additional keyword arguments to pass to the descriptor calculator call
-        :return:
-        """
-
-        if mols is not None:
-            smiles = [x.canonicalSMILES if isinstance(x, Molecule) else x for x in mols]
-        elif hasattr(self, "mols"):
-            smiles = [x.canonicalSMILES if isinstance(x, Molecule) else x for x in self.mols]
-        elif hasattr(self, "molsets"):
-            smiles = []
-            for molset in self.molsets:
-                for mol in molset.molecules.all():
-                    smiles.append(mol.canonicalSMILES)
-        else:
-            raise Exception("No molecules to calculate descriptors from.")
-
-        self.X = DataFrame()
-        for desc_class, arguments in self.descriptorClasses.items():
-            calculator = desc_class(self)
-            temp = calculator(smiles, **arguments)
-            temp.columns = [f"{desc_class.group_name}_{x}" for x in temp.columns]
-            self.X = pd.concat([self.X, temp], axis=1)
-        return self.X
+        classes = {self.findEmbeddingClass(x.name, x.corePackage): x.arguments for x in self.training.embeddings.all()}
+        self.embeddingCalculators = [class_(self)(**kwargs) for class_, kwargs in classes.items()]

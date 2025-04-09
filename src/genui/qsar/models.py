@@ -10,7 +10,7 @@ from genui.utils.inspection import get_non_abstract_classes_from_module
 QSPRPredScaffoldAlgorithms = [(fun, fun) for fun in get_non_abstract_classes_from_module('qsprpred.data.chem.scaffolds')]
 
 
-class DescriptorGroup(ImportableModelComponent):
+class EmbeddingCalculator(ImportableModelComponent):
     name = models.CharField(max_length=128, blank=False)
     corePackage = models.CharField(blank=False, null=False, default='genui.qsar.genuimodels', max_length=1024)
     arguments = models.JSONField(blank=False, null=False, default=dict)
@@ -19,7 +19,7 @@ class DescriptorGroup(ImportableModelComponent):
         return '%s object (%s)' % (self.__class__.__name__, self.name)
 
 class QSARTrainingStrategy(TrainingStrategy):
-    descriptors = models.ManyToManyField(DescriptorGroup)
+    embeddings = models.ManyToManyField(EmbeddingCalculator)
     activityThreshold = models.FloatField(null=True)
     activitySet = models.ForeignKey(ActivitySet, null=True, on_delete=models.CASCADE)
     activityType = models.ForeignKey(ActivityTypes, on_delete=models.CASCADE, null=True)
@@ -49,7 +49,7 @@ class ScaffoldClusters(MoleculeClusters):
     IDProp = models.CharField(max_length=128, blank=True)
 
 class FPSimilarityClusters(MoleculeClusters):
-    FPCalculator = models.ForeignKey(DescriptorGroup, null=False, on_delete=models.CASCADE)
+    FPCalculator = models.ForeignKey(EmbeddingCalculator, null=False, on_delete=models.CASCADE)
     IDProp = models.CharField(max_length=128, blank=True)
 
 class FPSimilarityMaxMinClusters(FPSimilarityClusters):

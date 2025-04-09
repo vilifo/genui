@@ -16,33 +16,33 @@ from genui.models.serializers import TrainingStrategySerializer, ModelSerializer
     DataSplitSerializer
 from genui.models import models as genui_models
 from . import models
-from ..utils.inspection import get_model_params
+from ..utils.inspection import get_default_params, SKLEARN_MODELS
 
 
-class DescriptorGroupSerializer(serializers.HyperlinkedModelSerializer):
+class EmbeddingCalculatorSerializer(serializers.HyperlinkedModelSerializer):
 
     class Meta:
-        model = models.DescriptorGroup
+        model = models.EmbeddingCalculator
         fields = ('id', 'name', 'arguments')
 
 class QSARTrainingStrategySerializer(TrainingStrategySerializer):
-    descriptors = DescriptorGroupSerializer(many=True)
+    embeddings = EmbeddingCalculatorSerializer(many=True)
     activityType = ActivityTypeSerializer(many=False)
     activitySet = ActivitySetSerializer(many=False)    
 
     class Meta:
         model = models.QSARTrainingStrategy
-        fields = TrainingStrategySerializer.Meta.fields + ('descriptors', 'activityThreshold', 'activityType', 'activitySet')
+        fields = TrainingStrategySerializer.Meta.fields + ('embeddings', 'activityThreshold', 'activityType', 'activitySet')
 
 class QSARTrainingStrategyInitSerializer(TrainingStrategyInitSerializer):
-    descriptors = serializers.PrimaryKeyRelatedField(many=True, queryset=models.DescriptorGroup.objects.all(), allow_empty=False)
+    embeddings = serializers.PrimaryKeyRelatedField(many=True, queryset=models.EmbeddingCalculator.objects.all(), allow_empty=False)
     activityType = serializers.PrimaryKeyRelatedField(many=False, queryset=ActivityTypes.objects.all(), required=False)
     activitySet = serializers.PrimaryKeyRelatedField(many=False, queryset=ActivitySet.objects.all(), required=False)
 
     class Meta:
         model = models.QSARTrainingStrategy
         fields = TrainingStrategyInitSerializer.Meta.fields + (
-            'descriptors', 'activityThreshold', 'activityType', 'activitySet'
+            'embeddings', 'activityThreshold', 'activityType', 'activitySet'
         )
         
 class QSARModelSerializer(ModelSerializer):
@@ -93,14 +93,15 @@ class QSARModelInitSerializer(QSARModelSerializer):
             if "Regressor" in alg and tr_strat_data['mode'].name == "classification":
                 raise serializers.ValidationError("You cannot use a regressor algorithm for a classification model.")
             parameters = json.loads(params['parameters'])
-            alg_parameters = get_model_params(alg)
+            alg_parameters = get_default_params(None, SKLEARN_MODELS[alg])
             for param in parameters:
                 if not param in alg_parameters:
                     raise serializers.ValidationError(f"Parameter {param} is not valid for the selected algorithm {alg}.")
 
-        hypo_data = tr_strat_data["hyperParamOptStrategies"]
-        val_data = tr_strat_data["validationStrategies"]
-        if hypo_data and len(val_data) > 1:
+        if ("hyperParamOptStrategies" in tr_strat_data and
+                len(tr_strat_data["hyperParamOptStrategies"]) > 0
+                and "validationStrategies" in tr_strat_data
+                and len(tr_strat_data["validationStrategies"]) > 1):
             raise serializers.ValidationError("You cannot use more than one validation strategy with hyperparameter optimization.")
         return ret
 
@@ -123,7 +124,7 @@ class QSARModelInitSerializer(QSARModelSerializer):
             activityType=strat_data['activityType'] if 'activityType' in strat_data else None
         )
         trainingStrategy.save()
-        trainingStrategy.descriptors.set(strat_data['descriptors'])
+        trainingStrategy.embeddings.set(strat_data['embeddings'])
         trainingStrategy.save()
 
         self.saveParameters(trainingStrategy, strat_data)
@@ -138,6 +139,7 @@ class QSARModelInitSerializer(QSARModelSerializer):
             validationStrategy.save()
 
         if hypo_data:
+            hypo_data = hypo_data[0]
             hyperparam_opt_strategy_class = getattr(genui_models, hypo_data["resourcetype"])
             hypo_data.pop("resourcetype")
             hyperparam_opt_strategy = hyperparam_opt_strategy_class.objects.create(
@@ -203,7 +205,7 @@ class ScaffoldClustersSerializer(MoleculeClustersSerializer):
         fields = MoleculeClustersSerializer.Meta.fields + ('scaffold', 'IDProp')
 
 class FPSimilarityClustersSerializer(MoleculeClustersSerializer):
-    FPCalculator = serializers.PrimaryKeyRelatedField(many=False, queryset=models.DescriptorGroup.objects.all())
+    FPCalculator = serializers.PrimaryKeyRelatedField(many=False, queryset=models.EmbeddingCalculator.objects.all())
     IDProp = serializers.CharField(max_length=128, required=False)
 
     class Meta:

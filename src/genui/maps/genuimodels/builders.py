@@ -2,18 +2,18 @@ import logging
 from pandas import DataFrame, Series
 from genui.compounds.models import Molecule
 from genui.models.genuimodels.bases import PredictionMixIn, ModelBuilder, ProgressMixIn
-from genui.qsar.genuimodels.bases import DescriptorBuilderMixIn
+from genui.qsar.genuimodels.bases import EmbeddingBuilderMixIn
 from genui.maps import models
 
 logger = logging.getLogger(__name__)
 
-class MapBuilder(DescriptorBuilderMixIn, PredictionMixIn, ProgressMixIn, ModelBuilder):
+class MapBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ProgressMixIn, ModelBuilder):
     def __init__(self, instance: models.Map, progress=None, onFit=None):
         super().__init__(instance, progress, onFit)
         self.mols = Molecule.objects.filter(
             providers__in=[x for x in self.instance.molsets.all()]
         )
-        self.progressStages.extend(["Calculated descriptors."])
+        self.progressStages.extend(["Calculated embeddings."])
 
     @property
     def corePackage(self):
@@ -25,7 +25,7 @@ class MapBuilder(DescriptorBuilderMixIn, PredictionMixIn, ProgressMixIn, ModelBu
 
     def getX(self) -> DataFrame:
         if self.X is None:
-            self.X = self.calculateDescriptors(self.mols.all())
+            self.X = self.getMols(self.mols.all())
             self.recordProgress()
         return self.X
 

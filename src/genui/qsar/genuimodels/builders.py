@@ -4,94 +4,43 @@ builders
 Created by: Martin Sicho
 On: 15-01-20, 12:55
 """
-import traceback
 import inspect
-
-import numpy as np
-import re
+import tempfile
+import traceback
 from abc import ABC
-import pandas as pd
-from qsprpred.data.descriptors.sets import DataFrameDescriptorSet
-from qsprpred.models import BaseMonitor, CrossValAssessor, TestSetAssessor
 from rdkit import Chem
-from pandas import DataFrame, Series
-from sklearn.model_selection import KFold, StratifiedKFold
-
+import numpy as np
+import pandas as pd
 from django.core.exceptions import ImproperlyConfigured
-from django.core.files.base import ContentFile
-
-from genui.models.models import ModelFile
-from genui.compounds.models import ActivityTypes, ActivitySet
-from genui.models.genuimodels.bases import Algorithm, PredictionMixIn, ValidationMixIn, ProgressMixIn, ModelBuilder
-from genui.models import models as core_models
-from genui.qsar import models as qsar_models
-from .bases import DescriptorBuilderMixIn
-
-from qsprpred.data.sampling import splits
 from qsprpred.data import QSPRDataset
+from qsprpred.data.sampling import splits
+from qsprpred import models as qsprpred_models
+from qsprpred.models import CrossValAssessor, TestSetAssessor
+from sklearn.model_selection import KFold, StratifiedKFold
+from genui.compounds.models import Molecule
+
+from genui.utils.inspection import snake_to_camel
+from .qsprpred_utils import RecordProgressMonitor, MetricsAggregator
+from genui.compounds.models import ActivityTypes, ActivitySet
+from genui.models import models as core_models
+from genui.models.genuimodels.bases import Algorithm, PredictionMixIn, ValidationMixIn, ProgressMixIn, ModelBuilder
+from genui.qsar import models as qsar_models
+from .bases import EmbeddingBuilderMixIn
 
 
-def camel_to_snake(name):
-    return re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
 
 
-def snake_to_camel(name):
-    words = name.split('_')
-    return words[0] + ''.join(word.capitalize() for word in words[1:])
 
-
-class RecordProgressMonitor(BaseMonitor):
-    def __init__(self, on_fold_start=None):
-        super().__init__()
-        self.on_fold_start = on_fold_start if on_fold_start else lambda: None
-        # TODO: Add record progress to other methods
-
-    def onFoldStart(
-            self,
-            fold: int,
-            X_train: np.ndarray,
-            y_train: np.ndarray,
-            X_test: np.ndarray,
-            y_test: np.ndarray,
-    ):
-        super().onFoldStart(fold, X_train, y_train, X_test, y_test)
-        self.on_fold_start()
-
-
-class MetricsAggregator:
-    @property
-    def perfClass(self):
-        return self._perfClass
-
-    @perfClass.setter
-    def perfClass(self, value):
-        self._perfClass = value
-
-    def __init__(self, validation_metric, metrics, builder, perfClass=core_models.ModelPerformance):
-        self.validation_metric = validation_metric
-        self.metricClasses = metrics
-        self._perfClass = perfClass
-        self.builder = builder
-
-    def __call__(self, y_true, y_pred):
-        for metric_class in self.metricClasses:
-            try:
-                metric_class(self.builder).save(y_true, y_pred, self.perfClass)
-            except Exception as exp:
-                print("Failed to obtain values for metric: ", metric_class.name)
-                self.builder.errors.append(exp)
-                traceback.print_exc()
-                continue
-        return self.validation_metric(self.builder)(y_true, y_pred)
-
-
-class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationMixIn, ProgressMixIn, ModelBuilder, ABC):
+class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMixIn, ProgressMixIn, ModelBuilder, ABC):
     def __init__(self, instance: qsar_models.Model, progress=None, onFitCall=None, validations=None):
         super().__init__(instance, progress, onFitCall)
         self.validations = validations if validations and len(
             validations) > 0 else self.instance.trainingStrategy.validationStrategies.all()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.dataset = None
 
-    def build(self) -> qsar_models.QSARModel:
+    def build(
+            self) -> qsar_models.QSARModel:  # TODO: dopsat splity, kontrola parametrů při serializaci, generování endpointů
         if not self.validations:
             raise ImproperlyConfigured("You cannot build a QSAR model without validation strategies.")
 
@@ -100,8 +49,10 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
 
         self.progressStages = [
             "Fetching activities...",
-            "Calculating descriptors..."
+            "Calculating embeddings..."
         ]
+        if self.hyper_param_opt:
+            self.progressStages.append("Optimizing hyperparameters...")
 
         for validation in self.validations:
             self.progressStages.extend([f"CV fold {x + 1}" for x in range(validation.cvFolds)])
@@ -109,116 +60,62 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
         self.progressStages.extend(["Fitting the final model...", "Saving the model..."])
 
         self.recordProgress()
-        mols = self.saveActivities()[1]
+        dataset = self.saveActivities()
 
         self.recordProgress()
-        self.calculateDescriptors(mols)
-        mols = pd.DataFrame([x.canonicalSMILES for x in mols], columns=["SMILES"])
-        X = self.X
-        y = pd.DataFrame(self.y, columns=["activity"])
-        if self.training.mode.name == Algorithm.CLASSIFICATION:
-            target_props = {"name": "activity", "task": "SINGLECLASS", "th": [self.training.activityThreshold], }
-        else:
-            target_props = {"name": "activity", "task": "REGRESSION"}
-        dataset = QSPRDataset("Dataset", [target_props],
-                              df=pd.concat([mols, y], axis=1))
-        dataset.prepareDataset(
-            feature_calculators=[DataFrameDescriptorSet(df=pd.concat([X, mols], axis=1), joining_cols=["SMILES"])])
+        dataset.prepareDataset(feature_calculators=[calculator for calculator in self.embeddingCalculators])
 
-        metrics_aggregator = MetricsAggregator([m for m in self.metricClasses], self, core_models.ModelPerformanceCV)
-        monitor = RecordProgressMonitor(self.recordProgress())
+        monitor = RecordProgressMonitor(self.recordProgress)
+        monitor.on_fold_start = True
+        monitor.on_optimization_start = True
+        metrics_aggregator = MetricsAggregator(self.metricClasses[0], [m for m in self.metricClasses], self, monitor,
+                                               core_models.ModelPerformanceCV)
         self._model = self.algorithmClass(self)
 
         for validation in self.validations:
             if hasattr(validation, 'dataSplit') and hasattr(validation, 'cvFolds'):
-                split_name = validation.dataSplit.__class__.__name__
-                split_instance = getattr(splits, split_name)
-                split_params = {param: getattr(validation.dataSplit, snake_to_camel(param)) for param in
-                                inspect.signature(split_instance.__init__).parameters if
-                                hasattr(validation.dataSplit, snake_to_camel(param))}
-                split_instance = split_instance(**split_params)
+                if self.hyper_param_opt: # TODO: edit based on strategy...
+                    optimizer_class = getattr(qsprpred_models, self.hyper_param_opt.__class__.__name__)
+                    optimizer = optimizer_class(
+                        param_grid=self.hyper_param_opt.searchSpace,
+                        model_assessor=CrossValAssessor(self.metricClasses[0](self)),
+                        score_aggregation=self.hyper_param_aggregator(self)
+                    )
+                    optimizer.optimize(self.model.model, dataset)
 
+                split_instance = self._init_split(validation)
                 dataset.split(split_instance)
-
-                X_train, y_train = dataset.X, dataset.y["activity"]
-                X_valid, y_valid = dataset.X_ind, dataset.y_ind["activity"]
 
                 # Perform cross-validation
                 is_regression = self.training.mode.name == Algorithm.REGRESSION
                 if is_regression:
-                    folds = KFold(validation.cvFolds).split(X_train)
+                    folds = KFold(validation.cvFolds)
                 else:
-                    folds = StratifiedKFold(validation.cvFolds).split(X_train, y_train)
+                    folds = StratifiedKFold(validation.cvFolds)
                 cva = CrossValAssessor(metrics_aggregator,
                                        folds,
                                        monitor,
-                                       use_proba=self.training.mode.name == Algorithm.CLASSIFICATION,)
+                                       use_proba=self.training.mode.name == Algorithm.CLASSIFICATION, )
                 cva(self.model.model, dataset, False, )
-                # for i, (train_index, test_index) in enumerate(folds):
-                #     self.recordProgress()
-                #     self.fitAndValidate(
-                #         X_train.iloc[train_index], y_train.iloc[train_index],
-                #         X_train.iloc[test_index], y_train.iloc[test_index],
-                #         perfClass=core_models.ModelPerformanceCV,
-                #         fold=i + 1
-                #     )
-                # self.recordProgress()
-                # self.fitAndValidate(X_train, y_train, X_valid, y_valid)
-                tsa = TestSetAssessor(metrics_aggregator,
-                                      monitor,
-                                      use_proba=self.training.mode.name == Algorithm.CLASSIFICATION,)
-                tsa(self.model.model, dataset, False)
 
-        # Final model fitting on all data
-        # final_model = self.algorithmClass(self)
-        # self.recordProgress()
-        # final_model.fit(dataset.X, dataset.y["activity"])
-        # self._model = final_model
-        self._model = self.model.qspr_fit(dataset, monitor)
+        monitor.on_assessment_start = True
+        metrics_aggregator.perfClass = core_models.ModelPerformance
+        tsa = TestSetAssessor(metrics_aggregator,
+                              monitor,
+                              use_proba=self.training.mode.name == Algorithm.CLASSIFICATION, )
+        tsa(self.model.model, dataset, False)
+
+        self.recordProgress()
+        self.model.model.fitDataset(dataset, save_model=False)
 
         # Final validation (optional, as it's not truly a validation)
-        self.recordProgress()
-        y_predicted = self.model.qspr_predict(dataset.X)
-        for validation in self.validations:
-            self.validate(validation, dataset.y["activity"], y_predicted)
+        y_predicted = self.model.predict(dataset.X)
+        # for validation in self.validations:
+        self.validate(dataset.y, y_predicted)
 
         self.recordProgress()
-        # self.save_model()
         self.saveFile()
         return self.instance
-
-    def save_model(self):  # Backup, for future endeavours
-        file = ModelFile.create(
-            self.instance,
-            f'{self.model.model_name}.tar.gz',
-            ContentFile('placeholder'),
-            kind=ModelFile.AUXILIARY,
-            note=f'{self.model.model_name}'
-        )
-        path = file.path
-        self.model.save_model(path)
-        self.instance.save()
-
-    def predictMolecules(self, mols):
-        smiles = []
-        failed_indices = []
-        for idx, mol in enumerate(mols):
-            if mol:
-                smiles.append(Chem.MolToSmiles(mol) if type(mol) == Chem.Mol else mol)
-            else:
-                failed_indices.append(idx)
-
-        predictions = [-1] * len(mols)
-        if len(failed_indices) == len(mols):
-            return np.array(predictions)
-
-        self.calculateDescriptors(smiles)
-        real_predictions = list(self.predict(self.getX()))
-        for idx, prediction in enumerate(predictions):
-            if idx not in failed_indices:
-                predictions[idx] = real_predictions.pop(0)
-        assert len(real_predictions) == 0
-        return np.array(predictions)
 
     def populateActivitySet(self, aset: qsar_models.ModelActivitySet):
         if not self.instance.predictionsType:
@@ -239,6 +136,35 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
 
         return aset.activities.all()
 
+    def predictMolecules(self, mols):
+        smiles = []
+        failed_indices = []
+        for idx, mol in enumerate(mols):
+            if mol:
+                smiles.append(Chem.MolToSmiles(mol) if type(mol) == Chem.Mol else mol)
+            else:
+                failed_indices.append(idx)
+
+        predictions = [-1] * len(mols)
+        if len(failed_indices) == len(mols):
+            return np.array(predictions)
+
+        real_predictions = list(self.predictMols(smiles))
+        for idx, prediction in enumerate(predictions):
+            if idx not in failed_indices:
+                predictions[idx] = real_predictions.pop(0)
+        assert len(real_predictions) == 0
+        return np.array(predictions)
+
+    @staticmethod
+    def _init_split(validation):
+        split_name = validation.dataSplit.__class__.__name__
+        split_instance = getattr(splits, split_name)
+        split_params = {param: getattr(validation.dataSplit, snake_to_camel(param)) for param in
+                        inspect.signature(split_instance.__init__).parameters if
+                        hasattr(validation.dataSplit, snake_to_camel(param))}
+        return split_instance(**split_params)
+
     def fitAndValidate(self, X_train, y_train, X_valid, y_valid, y_predicted=None,
                        perfClass=core_models.ModelPerformance, *args, **kwargs):
         if not y_predicted:
@@ -258,14 +184,11 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
                 traceback.print_exc()
                 continue
 
-    def getX(self) -> DataFrame:
-        return self.X
-
-    def getY(self) -> Series:
-        return self.y
+    def getDataset(self) -> QSPRDataset:
+        return self.dataset
 
     def saveActivities(self):
-        if not self.getY():
+        if not self.getDataset():
             activity_set = ActivitySet.objects.get(pk=self.training.activitySet.id)
             activity_type = self.training.activityType
             if not activity_set:
@@ -277,7 +200,6 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
             if not len(compounds) == len(activities):
                 raise Exception(
                     f'Number of compounds in a QSAR model ({len(compounds)}) is different from the set of activities assigned to them ({len(activities)}). Something went wrong when the data was cleaned for modeling.')
-            activities = Series(activities)
 
             if self.training.mode.name == Algorithm.CLASSIFICATION:
                 if not self.instance.predictionsType:
@@ -291,8 +213,34 @@ class BasicQSARModelBuilder(DescriptorBuilderMixIn, PredictionMixIn, ValidationM
                 self.instance.predictionsUnits = units
 
             self.instance.save()
-            self.y = activities
-            return self.y, compounds
+            if self.training.mode.name == Algorithm.CLASSIFICATION:
+                target_props = {"name": activity_type.value, "task": "SINGLECLASS",
+                                "th": [self.training.activityThreshold], }
+            else:
+                target_props = {"name": activity_type.value, "task": "REGRESSION"}
+            smiles = self.getSmiles(compounds)
+            df = pd.DataFrame({"SMILES": smiles, activity_type.value: activities})
+            self.dataset = QSPRDataset("Dataset", [target_props], df, store_dir=self.temp_dir.name)
+            return self.dataset
 
     def load_model(self):  # Backup, for future endeavours
         self._model = self.model.load_model(self.instance.files.filter(note=self.model.model_name)[0].path)
+
+    def getSmiles(self, mols=None) -> list:
+        if mols is not None:
+            smiles = [x.canonicalSMILES if isinstance(x, Molecule) else x for x in mols]
+        elif hasattr(self, "mols"):
+            smiles = [x.canonicalSMILES if isinstance(x, Molecule) else x for x in self.mols]
+        elif hasattr(self, "molsets"):
+            smiles = []
+            for molset in self.molsets:
+                for mol in molset.molecules.all():
+                    smiles.append(mol.canonicalSMILES)
+        else:
+            raise Exception("No molecules to calculate embeddings from.")
+
+        return smiles
+
+    def predictMols(self, smiles=None):
+        smiles = self.getSmiles(smiles)
+        return self.model.predictMols(smiles)
