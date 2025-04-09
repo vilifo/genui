@@ -20,22 +20,29 @@ from ..utils.inspection import get_default_params, SKLEARN_MODELS
 
 
 class EmbeddingCalculatorSerializer(serializers.HyperlinkedModelSerializer):
-
     class Meta:
         model = models.EmbeddingCalculator
         fields = ('id', 'name', 'arguments')
 
+
+class ScaffoldCalculatorSerializer(EmbeddingCalculatorSerializer):
+    pass
+
+
 class QSARTrainingStrategySerializer(TrainingStrategySerializer):
     embeddings = EmbeddingCalculatorSerializer(many=True)
     activityType = ActivityTypeSerializer(many=False)
-    activitySet = ActivitySetSerializer(many=False)    
+    activitySet = ActivitySetSerializer(many=False)
 
     class Meta:
         model = models.QSARTrainingStrategy
-        fields = TrainingStrategySerializer.Meta.fields + ('embeddings', 'activityThreshold', 'activityType', 'activitySet')
+        fields = TrainingStrategySerializer.Meta.fields + (
+            'embeddings', 'activityThreshold', 'activityType', 'activitySet')
+
 
 class QSARTrainingStrategyInitSerializer(TrainingStrategyInitSerializer):
-    embeddings = serializers.PrimaryKeyRelatedField(many=True, queryset=models.EmbeddingCalculator.objects.all(), allow_empty=False)
+    embeddings = serializers.PrimaryKeyRelatedField(many=True, queryset=models.EmbeddingCalculator.objects.all(),
+                                                    allow_empty=False)
     activityType = serializers.PrimaryKeyRelatedField(many=False, queryset=ActivityTypes.objects.all(), required=False)
     activitySet = serializers.PrimaryKeyRelatedField(many=False, queryset=ActivitySet.objects.all(), required=False)
 
@@ -44,7 +51,8 @@ class QSARTrainingStrategyInitSerializer(TrainingStrategyInitSerializer):
         fields = TrainingStrategyInitSerializer.Meta.fields + (
             'embeddings', 'activityThreshold', 'activityType', 'activitySet'
         )
-        
+
+
 class QSARModelSerializer(ModelSerializer):
     trainingStrategy = QSARTrainingStrategySerializer(many=False)
     molset = MolSetSerializer(many=False, required=False)
@@ -56,6 +64,7 @@ class QSARModelSerializer(ModelSerializer):
         model = models.QSARModel
         fields = ModelSerializer.Meta.fields + ('molset', 'predictions', 'predictionsType', 'predictionsUnits')
         read_only_fields = ModelSerializer.Meta.read_only_fields + ('predictions',)
+
 
 class QSARModelInitSerializer(QSARModelSerializer):
     trainingStrategy = QSARTrainingStrategyInitSerializer(many=False)
@@ -73,17 +82,22 @@ class QSARModelInitSerializer(QSARModelSerializer):
         data = self.validated_data
         tr_strat_data = data['trainingStrategy']
 
-        if data['build'] and tr_strat_data['mode'].name == "classification" and ('activityThreshold' not in  tr_strat_data or tr_strat_data['activityThreshold'] is None):
+        if data['build'] and tr_strat_data['mode'].name == "classification" and (
+                'activityThreshold' not in tr_strat_data or tr_strat_data['activityThreshold'] is None):
             raise serializers.ValidationError("You must specify an activity threshold for a classification model.")
 
-        if data['build'] and ('activityType' not in  tr_strat_data or tr_strat_data['activityType'] is None):
-            raise serializers.ValidationError("You have to specify the activity type of the training data. Use the 'activityType' parameter in 'trainingStrategy'.")
+        if data['build'] and ('activityType' not in tr_strat_data or tr_strat_data['activityType'] is None):
+            raise serializers.ValidationError(
+                "You have to specify the activity type of the training data. Use the 'activityType' parameter in 'trainingStrategy'.")
 
-        if data['build'] and ('activitySet' not in  tr_strat_data or tr_strat_data['activitySet'] is None):
-            raise serializers.ValidationError("You have to specify the activity set that contains the true activities for training. Use the 'activitySet' parameter in 'trainingStrategy'.")
+        if data['build'] and ('activitySet' not in tr_strat_data or tr_strat_data['activitySet'] is None):
+            raise serializers.ValidationError(
+                "You have to specify the activity set that contains the true activities for training. Use the 'activitySet' parameter in 'trainingStrategy'.")
 
-        if not data["build"] and ("predictionsType" not in data or "predictionsUnits" not in data or not data["predictionsType"]):
-            raise serializers.ValidationError("You have to specify the type and units of the predicted values if you are not building the model from existing data. Both 'predictionsType' and 'predictionsUnits' must be specified. You can set 'predictionsUnits' to 'null' if the model output variable has no dimension.")
+        if not data["build"] and (
+                "predictionsType" not in data or "predictionsUnits" not in data or not data["predictionsType"]):
+            raise serializers.ValidationError(
+                "You have to specify the type and units of the predicted values if you are not building the model from existing data. Both 'predictionsType' and 'predictionsUnits' must be specified. You can set 'predictionsUnits' to 'null' if the model output variable has no dimension.")
 
         if tr_strat_data["algorithm"].name == 'QSPRPredScikitModel' and "parameters" in tr_strat_data.keys():
             params = tr_strat_data['parameters']
@@ -96,16 +110,19 @@ class QSARModelInitSerializer(QSARModelSerializer):
             alg_parameters = get_default_params(None, SKLEARN_MODELS[alg])
             for param in parameters:
                 if not param in alg_parameters:
-                    raise serializers.ValidationError(f"Parameter {param} is not valid for the selected algorithm {alg}.")
+                    raise serializers.ValidationError(
+                        f"Parameter {param} is not valid for the selected algorithm {alg}.")
 
         if ("hyperParamOptStrategies" in tr_strat_data and
                 len(tr_strat_data["hyperParamOptStrategies"]) > 0
                 and "validationStrategies" in tr_strat_data
                 and len(tr_strat_data["validationStrategies"]) > 1):
-            raise serializers.ValidationError("You cannot use more than one validation strategy with hyperparameter optimization.")
+            raise serializers.ValidationError(
+                "You cannot use more than one validation strategy with hyperparameter optimization.")
         return ret
 
     def create(self, validated_data, **kwargs):
+        super().create(validated_data, **kwargs)
         validation_strategies_data = validated_data['trainingStrategy'].pop('validationStrategies', [])
         hypo_data = validated_data['trainingStrategy'].pop('hyperParamOptStrategies', None)
         instance = super().create(
@@ -116,10 +133,10 @@ class QSARModelInitSerializer(QSARModelSerializer):
 
         strat_data = validated_data['trainingStrategy']
         trainingStrategy = models.QSARTrainingStrategy(
-            modelInstance = instance,
-            algorithm = strat_data['algorithm'],
-            mode = strat_data['mode'],
-            activityThreshold = strat_data['activityThreshold'] if 'activityThreshold' in strat_data else None,
+            modelInstance=instance,
+            algorithm=strat_data['algorithm'],
+            mode=strat_data['mode'],
+            activityThreshold=strat_data['activityThreshold'] if 'activityThreshold' in strat_data else None,
             activitySet=strat_data['activitySet'] if 'activitySet' in strat_data else None,
             activityType=strat_data['activityType'] if 'activityType' in strat_data else None
         )
@@ -161,6 +178,7 @@ class QSARModelInitSerializer(QSARModelSerializer):
         instance.save()
         return instance
 
+
 class ModelActivitySetSerializer(ActivitySetSerializer):
     model = serializers.PrimaryKeyRelatedField(many=False, queryset=models.QSARModel.objects.all())
     taskID = serializers.UUIDField(read_only=True, required=False)
@@ -170,56 +188,87 @@ class ModelActivitySetSerializer(ActivitySetSerializer):
         fields = ActivitySetSerializer.Meta.fields + ('model', 'taskID')
         read_only_fields = ActivitySetSerializer.Meta.read_only_fields + ('taskID', 'model', 'project')
 
-class BootstrapSplitSerializer(DataSplitSerializer):
-    split = serializers.PrimaryKeyRelatedField(many=False, queryset=models.DataSplit.objects.all())
-
-    class Meta:
-        model = models.BootstrapSplit
-        fields = DataSplitSerializer.Meta.fields + ('nBootstraps', 'seed', 'split')
 
 class TemporalSplitSerializer(DataSplitSerializer):
-
     class Meta:
         model = models.TemporalSplit
         fields = DataSplitSerializer.Meta.fields + ('timeSplit', 'timeProp')
 
-class MoleculeClustersSerializer(serializers.HyperlinkedModelSerializer):
 
+class GBMTDataSplitSerializer(DataSplitSerializer):
+    clustering = serializers.PrimaryKeyRelatedField(required=False, queryset=models.MoleculeClusters.objects.all())
+    testFraction = serializers.FloatField(required=False)  # mutually exclusive with nFolds
+    nFolds = serializers.IntegerField(required=False)
+
+    class Meta:
+        model = models.GBMTDataSplit
+        fields = DataSplitSerializer.Meta.fields + ('clustering', 'testFraction', 'nFolds')
+
+
+class GBMTRandomSplitSerializer(GBMTDataSplitSerializer):
+    seed = serializers.IntegerField(required=False, default=42)
+    nInitialClusters = serializers.IntegerField(required=False)
+
+    class Meta:
+        model = models.GBMTRandomSplit
+        fields = GBMTDataSplitSerializer.Meta.fields + ('seed', 'nInitialClusters')
+
+
+class ScaffoldSplitSerializer(GBMTDataSplitSerializer):
+    scaffold = serializers.PrimaryKeyRelatedField(many=False, queryset=models.ScaffoldCalculator.objects.all())
+
+    class Meta:
+        model = models.ScaffoldSplit
+        fields = GBMTDataSplitSerializer.Meta.fields + ('scaffold',)
+
+
+class ClusterSerializer(GBMTDataSplitSerializer):
+    seed = serializers.IntegerField(required=False, default=42)
+
+    class Meta:
+        model = models.ClusterSplit
+        fields = GBMTDataSplitSerializer.Meta.fields + ('seed',)
+
+
+class MoleculeClustersSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
         model = models.MoleculeClusters
         fields = ('id',)
 
+
 class RandomClustersSerializer(MoleculeClustersSerializer):
-    IDProp = serializers.CharField(max_length=128, required=False)
+    seed = serializers.IntegerField(required=False, default=42)
     nClusters = serializers.IntegerField(required=False, min_value=1)
 
     class Meta:
         model = models.RandomClusters
-        fields = MoleculeClustersSerializer.Meta.fields + ('seed', 'nClusters', 'IDProp')
+        fields = MoleculeClustersSerializer.Meta.fields + ('seed', 'nClusters')
+
 
 class ScaffoldClustersSerializer(MoleculeClustersSerializer):
-    IDProp = serializers.CharField(max_length=128, required=False)
+    scaffold = serializers.PrimaryKeyRelatedField(required=True, many=False,
+                                                  queryset=models.ScaffoldCalculator.objects.all())
 
     class Meta:
         model = models.ScaffoldClusters
-        fields = MoleculeClustersSerializer.Meta.fields + ('scaffold', 'IDProp')
+        fields = MoleculeClustersSerializer.Meta.fields + ('scaffold',)
+
 
 class FPSimilarityClustersSerializer(MoleculeClustersSerializer):
     FPCalculator = serializers.PrimaryKeyRelatedField(many=False, queryset=models.EmbeddingCalculator.objects.all())
-    IDProp = serializers.CharField(max_length=128, required=False)
 
     class Meta:
         model = models.FPSimilarityClusters
-        fields = MoleculeClustersSerializer.Meta.fields + ('FPCalculator', 'IDProp')
+        fields = MoleculeClustersSerializer.Meta.fields + ('FPCalculator',)
+
 
 class FPSimilarityMaxMinClustersSerializer(FPSimilarityClustersSerializer):
     seed = serializers.IntegerField(required=False)
     nClusters = serializers.IntegerField(required=False, min_value=1)
-    # initialCentroids = serializers.PrimaryKeyRelatedField(many=True, queryset=models.Molecule.objects.all(), required=False)
 
     class Meta:
         model = models.FPSimilarityMaxMinClusters
-        fields = FPSimilarityClustersSerializer.Meta.fields + ('seed', 'nClusters', 'initialCentroids')
+        fields = FPSimilarityClustersSerializer.Meta.fields + ('seed', 'nClusters')
 
 
 class FPSimilarityLeaderPickerClustersSerializer(FPSimilarityClustersSerializer):
@@ -228,7 +277,8 @@ class FPSimilarityLeaderPickerClustersSerializer(FPSimilarityClustersSerializer)
     class Meta:
         model = models.FPSimilarityLeaderPickerClusters
         fields = FPSimilarityClustersSerializer.Meta.fields + ('similarityThreshold',)
-        
+
+
 class QSPRPredSklearnModelSerializer(serializers.Serializer):
     name = serializers.CharField()
     type = serializers.CharField()

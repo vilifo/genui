@@ -74,13 +74,14 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
 
         for validation in self.validations:
             if hasattr(validation, 'dataSplit') and hasattr(validation, 'cvFolds'):
-                if self.hyper_param_opt: # TODO: edit based on strategy...
+                if self.hyper_param_opt:
                     optimizer_class = getattr(qsprpred_models, self.hyper_param_opt.__class__.__name__)
-                    optimizer = optimizer_class(
-                        param_grid=self.hyper_param_opt.searchSpace,
-                        model_assessor=CrossValAssessor(self.metricClasses[0](self)),
-                        score_aggregation=self.hyper_param_aggregator(self)
-                    )
+                    kwargs = {"param_grid":self.hyper_param_opt.searchSpace,
+                              "model_assessor":CrossValAssessor(self.hypo_metric(self)),
+                              "score_aggregation":self.hyper_param_aggregator(self)}
+                    if "nTrials" in dir(self.hyper_param_opt):
+                        kwargs["n_trials"] = self.hyper_param_opt.nTrials
+                    optimizer = optimizer_class(**kwargs)
                     optimizer.optimize(self.model.model, dataset)
 
                 split_instance = self._init_split(validation)

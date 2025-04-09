@@ -23,8 +23,8 @@ class ModelFileFormat(models.Model):
     fileExtension = models.CharField(max_length=32, blank=False, unique=True)
     description = models.TextField(max_length=10000, blank=True)
 
-class ImportableModelComponent(models.Model):
 
+class ImportableModelComponent(models.Model):
     corePackage = models.CharField(blank=False, null=False, default='genui.models.genuimodels', max_length=1024)
 
     class Meta:
@@ -46,10 +46,10 @@ class ModelParameter(models.Model):
     INTEGER = 'integer'
     FLOAT = 'float'
     CONTENT_TYPES = [
-       (STRING, 'String'),
-       (BOOL, 'Logical'),
-       (INTEGER, 'Integer'),
-       (FLOAT, 'Float'),
+        (STRING, 'String'),
+        (BOOL, 'Logical'),
+        (INTEGER, 'Integer'),
+        (FLOAT, 'Float'),
     ]
 
     name = models.CharField(max_length=128, blank=False)
@@ -63,18 +63,20 @@ class ModelParameter(models.Model):
     def __str__(self):
         return '%s object (%s)' % (self.__class__.__name__, self.name)
 
+
 class ModelBuilder(ImportableModelComponent):
     name = models.CharField(max_length=128, blank=False, unique=True)
 
     def __str__(self):
         return '%s object (%s)' % (self.__class__.__name__, self.name)
 
+
 class ModelFile(models.Model):
     MAIN = "main"
     AUXILIARY = "aux"
     KINDS = [
-       (MAIN, 'Main'),
-       (AUXILIARY, 'Auxiliary'),
+        (MAIN, 'Main'),
+        (AUXILIARY, 'Auxiliary'),
     ]
 
     class Rejected(Exception):
@@ -91,7 +93,8 @@ class ModelFile(models.Model):
     kind = models.CharField(max_length=32, choices=KINDS, null=False, default=AUXILIARY)
     note = models.CharField(max_length=128, blank=True)
     format = models.ForeignKey(ModelFileFormat, null=True, on_delete=models.CASCADE)
-    file = models.FileField(null=True, upload_to='models/', storage=OverwriteStorage()) # TODO: add custom logic to save in a directory specific to the project where the model is
+    file = models.FileField(null=True, upload_to='models/',
+                            storage=OverwriteStorage())  # TODO: add custom logic to save in a directory specific to the project where the model is
 
     @property
     def path(self):
@@ -117,7 +120,8 @@ class ModelFile(models.Model):
                     file_format = format_
                     break
             if not file_format:
-                raise ModelFile.InvalidFileFormatError(f"The extension for file '{name}' of the submitted file did not match any of the known formats for algorithm: ({algorithm.name}).")
+                raise ModelFile.InvalidFileFormatError(
+                    f"The extension for file '{name}' of the submitted file did not match any of the known formats for algorithm: ({algorithm.name}).")
 
             if model.modelFile.format.fileExtension == file_format.fileExtension:
                 model.modelFile.file.save(os.path.basename(model.modelFile.path), file_)
@@ -140,7 +144,8 @@ class ModelFile(models.Model):
                     break
             if kind == ModelFile.MAIN:
                 if not file_format:
-                    raise ModelFile.InvalidFileFormatError(f"The extension for file '{name}' of the submitted file did not match any of the known formats for model: {model.name}.")
+                    raise ModelFile.InvalidFileFormatError(
+                        f"The extension for file '{name}' of the submitted file did not match any of the known formats for model: {model.name}.")
                 ret = ModelFile.objects.create(
                     modelInstance=model,
                     kind=ModelFile.MAIN,
@@ -161,6 +166,7 @@ class ModelFile(models.Model):
 
             return ret
 
+
 class Model(TaskShortcutsMixIn, TaskMixin, DataSet):
     objects = PolymorphicTaskManager()
     builder = models.ForeignKey(ModelBuilder, on_delete=models.CASCADE, null=False)
@@ -170,14 +176,15 @@ class Model(TaskShortcutsMixIn, TaskMixin, DataSet):
 
     @property
     def modelFile(self):
-        # TODO: exception when more than one main file found
         main = self.files.filter(kind=ModelFile.MAIN)
+        if len(main) > 1:
+            raise ValueError("More than one main file found for this model instance.")
         if main:
             return main.get()
         else:
             return None
 
-    def onFileSave(self, saved : ModelFile):
+    def onFileSave(self, saved: ModelFile):
         """
         This will be called when a file is being
         saved to this model instance. You can throw
@@ -208,7 +215,8 @@ class Model(TaskShortcutsMixIn, TaskMixin, DataSet):
         elif count == 0:
             return None
         else:
-            raise Exception("Training strategy returned more than one value. This indicates an integrity error in the database!")
+            raise Exception(
+                "Training strategy returned more than one value. This indicates an integrity error in the database!")
 
     # @property
     # def validationStrategy(self):
@@ -232,7 +240,8 @@ class TrainingStrategy(PolymorphicModel):
 
 class ModelParameterValue(PolymorphicModel):
     parameter = models.ForeignKey(ModelParameter, on_delete=models.CASCADE, null=False)
-    strategy = models.ForeignKey(TrainingStrategy, on_delete=NON_POLYMORPHIC_CASCADE, null=True, related_name='parameters')
+    strategy = models.ForeignKey(TrainingStrategy, on_delete=NON_POLYMORPHIC_CASCADE, null=True,
+                                 related_name='parameters')
 
     @staticmethod
     def parseValue(val):
@@ -266,11 +275,12 @@ class ModelParameterFloat(ModelParameterValue):
     def parseValue(val):
         return float(val)
 
+
 PARAM_VALUE_CTYPE_TO_MODEL_MAP = {
-    ModelParameter.STRING : ModelParameterStr,
-    ModelParameter.INTEGER : ModelParameterInt,
-    ModelParameter.FLOAT : ModelParameterFloat,
-    ModelParameter.BOOL : ModelParameterBool
+    ModelParameter.STRING: ModelParameterStr,
+    ModelParameter.INTEGER: ModelParameterInt,
+    ModelParameter.FLOAT: ModelParameterFloat,
+    ModelParameter.BOOL: ModelParameterBool
 }
 
 
@@ -283,6 +293,7 @@ class ModelPerformanceMetric(ImportableModelComponent):
     def __str__(self):
         return '%s object (%s)' % (self.__class__.__name__, self.name)
 
+
 class ValueAggregationFunction(ImportableModelComponent):
     name = models.CharField(unique=True, blank=False, max_length=128)
     description = models.TextField(max_length=10000, blank=True)
@@ -290,27 +301,44 @@ class ValueAggregationFunction(ImportableModelComponent):
     def __str__(self):
         return '%s object (%s)' % (self.__class__.__name__, self.name)
 
+
 class DataSplit(PolymorphicModel):
     pass
+
 
 class RandomSplit(DataSplit):
     testFraction = models.FloatField(blank=False)
     seed = models.IntegerField(blank=True, default=42)
 
+
+class BootstrapSplit(DataSplit):
+    split = models.ForeignKey(DataSplit, null=False, on_delete=models.CASCADE, related_name="bootstrappedSplits")
+    nBootstraps = models.IntegerField(blank=False)
+    seed = models.IntegerField(blank=True, default=42)
+
+
 class ValidationStrategy(PolymorphicModel):
     metrics = models.ManyToManyField(ModelPerformanceMetric)
-    trainingStrategy = models.ForeignKey(TrainingStrategy, null=False, on_delete=models.CASCADE, related_name='validationStrategies')
+    trainingStrategy = models.ForeignKey(TrainingStrategy, null=False, on_delete=models.CASCADE,
+                                         related_name='validationStrategies')
+
 
 class HyperparameterOptimizationStrategy(PolymorphicModel):
     searchSpace = models.JSONField(blank=True)
-    scoreAggregation = models.ForeignKey(ValueAggregationFunction, null=False, on_delete=models.CASCADE, related_name='hyperParamOptStrategies')
-    trainingStrategy = models.ForeignKey(TrainingStrategy, null=False, on_delete=models.CASCADE, related_name='hyperParamOptStrategies')
+    metric = models.ForeignKey(ModelPerformanceMetric, null=False, on_delete=models.CASCADE)
+    scoreAggregation = models.ForeignKey(ValueAggregationFunction, null=False, on_delete=models.CASCADE,
+                                         related_name='hyperParamOptStrategies')
+    trainingStrategy = models.ForeignKey(TrainingStrategy, null=False, on_delete=models.CASCADE,
+                                         related_name='hyperParamOptStrategies')
+
 
 class OptunaOptimization(HyperparameterOptimizationStrategy):
     nTrials = models.IntegerField(blank=False)
 
+
 class GridSearchOptimization(HyperparameterOptimizationStrategy):
     pass
+
 
 class CV(ValidationStrategy):
     cvFolds = models.IntegerField(blank=False)
@@ -339,12 +367,13 @@ class ModelPerformance(PolymorphicModel):
 class ModelPerformanceCV(ModelPerformance):
     fold = models.IntegerField(blank=False)
 
+
 class ModelPerformanceNN(ModelPerformance):
     epoch = models.IntegerField(null=False, blank=False)
     step = models.IntegerField(null=False, blank=False)
 
-class ROCCurvePoint(ModelPerformance):
 
+class ROCCurvePoint(ModelPerformance):
     fpr = models.FloatField(blank=False)
     auc = models.ForeignKey(ModelPerformance, null=False, on_delete=NON_POLYMORPHIC_CASCADE, related_name="points")
 

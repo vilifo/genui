@@ -490,14 +490,12 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         temp_dir_model = tempfile.TemporaryDirectory()
 
         activity_set = self.molset.activities.get()
-        activity_type = 1
         compounds, activities, units = activity_set.cleanForModelling(ActivityTypes.objects.get(value="Ki_pChEMBL").id)
         compounds = [x.canonicalSMILES for x in compounds]
 
         dataset = QSPRDataset("TestDataset",
                               [{"name": "activity", "task": "SINGLECLASS", "th": [6.5]}],
-                              pd.DataFrame({'SMILES': compounds, 'activity': activities}),
-                              smiles_col="SMILES", )
+                              pd.DataFrame({'SMILES': compounds, 'activity': activities}))
 
         rand_split = RandomSplit(test_fraction=0.2, dataset=dataset)
         dataset.prepareDataset(
@@ -506,7 +504,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         )
         alg = SklearnModel(temp_dir_model.name, RandomForestClassifier,
                            "TestModel", parameters={"n_estimators": 150})
-        alg.estimator.fit(dataset.X.values, dataset.y["activity"].values)
+        alg.fitDataset(dataset)
         alg.save(True)
         model_path = os.path.join(temp_dir_model.name, alg.name + ".tar.gz")
         with tarfile.open(model_path, "w:gz") as tar:
@@ -516,7 +514,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             Algorithm.objects.get_or_create(name="QSPRPredScikitModel")[0],
             AlgorithmMode.objects.get(name="classification"),
             [EmbeddingCalculator.objects.get_or_create(
-                name="QSPRPRED_FINGERPRINT", arguments={"fingerprint": "MorganFP", "radius": 3, "nBits": 2048, })[0]],
+                name="MorganFP", arguments={"radius": 3, "nBits": 2048})[0]],
             'Active Probability',
             None,
             {"alg": "RandomForestClassifier",
@@ -526,8 +524,18 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         self.predictWithModel(instance, self.molset)
 
     def test_hyperparameter_optimization(self):
-        model = self.createTestQSARModel(hyperParamOptStrategies=[{
-            "resourcetype": "GridSearchStrategy",
+        self.createTestQSARModel(hyperParamOptStrategies=[{
+            "resourcetype": "GridSearchOptimization",
             "searchSpace": {"n_estimators": [150, 200]},
+            "metric": ModelPerformanceMetric.objects.get(name="Accuracy").id,
             "scoreAggregation": ValueAggregationFunction.objects.get(name="Mean").id
         }], )
+        self.createTestQSARModel(hyperParamOptStrategies=[{
+            "resourcetype": "OptunaOptimization",
+            "searchSpace": {"n_estimators": ["int", 100, 250],},
+            "metric": ModelPerformanceMetric.objects.get(name="F1").id,
+            "scoreAggregation": ValueAggregationFunction.objects.get(name="Mean").id,
+            "nTrials": 10,
+        }])
+
+    def

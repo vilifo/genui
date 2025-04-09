@@ -63,9 +63,9 @@ class QSPRPredScikitModel(Algorithm):
         is_regression = self.mode.name == self.REGRESSION
         if self.model:
             if is_regression:
-                return self.model.estimator.predict(X.values)
+                return self.model.predict(X.values)
             else:
-                return self.model.estimator.predict_proba(X.values)[:, 0]
+                return self.model.predictProba(X.values)
         else:
             raise ModelNotFittedException("You have to fit the model first.")
 

@@ -87,15 +87,17 @@ class ValueAggregationFunctionSerializer(serializers.HyperlinkedModelSerializer)
 
 
 class HyperparameterOptimizationStrategySerializer(serializers.HyperlinkedModelSerializer):
+    metric = ModelPerformanceMetricSerializer(many=False)
     scoreAggregation = ValueAggregationFunctionSerializer(many=False)
     searchSpace = serializers.JSONField()
 
     class Meta:
         model = HyperparameterOptimizationStrategy
-        fields = ('searchSpace', 'scoreAggregation', 'trainingStrategy')
+        fields = ('searchSpace', 'scoreAggregation', 'trainingStrategy', 'metric')
 
 
 class HyperparameterOptimizationStrategyInitSerializer(HyperparameterOptimizationStrategySerializer):
+    metric = serializers.PrimaryKeyRelatedField(many=False, queryset=ModelPerformanceMetric.objects.all())
     scoreAggregation = serializers.PrimaryKeyRelatedField(many=False, queryset=ValueAggregationFunction.objects.all())
     searchSpace = serializers.JSONField()
 
@@ -104,19 +106,19 @@ class HyperparameterOptimizationStrategyInitSerializer(HyperparameterOptimizatio
         fields = tuple(x for x in HyperparameterOptimizationStrategySerializer.Meta.fields if x != 'trainingStrategy')
 
 
-class GridSearchStrategyInitSerializer(HyperparameterOptimizationStrategyInitSerializer):
+class GridSearchOptimizationInitSerializer(HyperparameterOptimizationStrategyInitSerializer):
     class Meta:
         model = GridSearchOptimization
         fields = HyperparameterOptimizationStrategyInitSerializer.Meta.fields
 
 
-class GridSearchStrategySerializer(GridSearchStrategyInitSerializer):
+class GridSearchOptimizationSerializer(GridSearchOptimizationInitSerializer):
     class Meta:
         model = GridSearchOptimization
-        fields = GridSearchStrategyInitSerializer.Meta.fields
+        fields = GridSearchOptimizationInitSerializer.Meta.fields
 
 
-class OptunaStrategyInitSerializer(HyperparameterOptimizationStrategyInitSerializer):
+class OptunaOptimizationInitSerializer(HyperparameterOptimizationStrategyInitSerializer):
     nTrials = serializers.IntegerField()
 
     class Meta:
@@ -124,26 +126,26 @@ class OptunaStrategyInitSerializer(HyperparameterOptimizationStrategyInitSeriali
         fields = HyperparameterOptimizationStrategyInitSerializer.Meta.fields + ('nTrials',)
 
 
-class OptunaStrategySerializer(OptunaStrategyInitSerializer):
+class OptunaOptimizationSerializer(OptunaOptimizationInitSerializer):
     nTrials = serializers.IntegerField(min_value=1)
 
     class Meta:
         model = OptunaOptimization
-        fields = OptunaStrategyInitSerializer.Meta.fields
+        fields = OptunaOptimizationInitSerializer.Meta.fields
 
 
 class HyperparameterOptimizationStrategyPolymorphicSerializer(PolymorphicSerializer):
     model_serializer_mapping = {
-        GridSearchOptimization: GridSearchStrategySerializer,
-        OptunaOptimization: OptunaStrategySerializer,
+        GridSearchOptimization: GridSearchOptimizationSerializer,
+        OptunaOptimization: OptunaOptimizationSerializer,
     }
 
 
 class HyperparameterOptimizationStrategyPolymorphicInitSerializer(PolymorphicSerializer):
     model_serializer_mapping = {
         HyperparameterOptimizationStrategy: HyperparameterOptimizationStrategyInitSerializer,
-        GridSearchOptimization: GridSearchStrategyInitSerializer,
-        OptunaOptimization: OptunaStrategyInitSerializer,
+        GridSearchOptimization: GridSearchOptimizationInitSerializer,
+        OptunaOptimization: OptunaOptimizationInitSerializer,
     }
 
 
@@ -229,7 +231,6 @@ class TrainingStrategyInitSerializer(TrainingStrategySerializer):
                 )
                 validationStrategy.metrics.set(vs_data['metrics'])
                 validationStrategy.save()
-
 
         if 'hyperParamOptStrategies' in validated_data:
             hypo_data = validated_data['hyperParamOptStrategies'][0]
@@ -349,3 +350,11 @@ class RandomSplitSerializer(DataSplitSerializer):
     class Meta:
         model = RandomSplit
         fields = DataSplitSerializer.Meta.fields + ('testFraction', 'seed')
+
+
+class BootstrapSplitSerializer(DataSplitSerializer):
+    split = serializers.PrimaryKeyRelatedField(many=False, queryset=models.DataSplit.objects.all())
+
+    class Meta:
+        model = models.BootstrapSplit
+        fields = DataSplitSerializer.Meta.fields + ('nBootstraps', 'seed', 'split')

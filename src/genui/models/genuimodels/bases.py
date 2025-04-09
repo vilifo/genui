@@ -235,7 +235,8 @@ class ValidationMetric(ABC):
 
     @staticmethod
     def probasToClasses(probas):
-        return [1 if x >= 0.5 else 0 for x in probas]
+        axis = 2 if isinstance(probas, list) else 1
+        return np.argmax(probas, axis=axis) == True
 
     def save(
             self,
@@ -362,6 +363,7 @@ class ModelBuilder(ABC):
         if self.hyper_param_opt:
             aggregation = self.hyper_param_opt.scoreAggregation.name
             self.hyper_param_aggregator = self.findAggregationFunctionClass(aggregation)
+            self.hypo_metric = self.findMetricClass(self.hyper_param_opt.metric.name)
         self.progress = progress
         self.errors = []
 

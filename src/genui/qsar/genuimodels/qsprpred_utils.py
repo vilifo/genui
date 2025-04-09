@@ -2,6 +2,7 @@ from qsprpred.models.monitors import BaseMonitor
 from genui.utils.inspection import camel_to_snake, snake_to_camel
 import traceback
 from genui.models import models
+from genui.models.genuimodels.bases import Algorithm
 import re
 
 def private_state(state):
@@ -49,9 +50,6 @@ class MetricsAggregator:
 
     def __call__(self, y_true, y_pred):
         kwargs = {}
-        y_pred = y_pred[0]
-        if len(y_pred.shape) > 1:
-            y_pred = y_pred[:, 0]
         if self.perfClass == models.ModelPerformanceCV:
             kwargs["fold"] = self.monitor.currentFold + 1
 

@@ -4,6 +4,7 @@ On: 14-01-20, 10:16
 """
 
 from abc import ABC
+import importlib
 from genui.utils.inspection import findSubclassByID, importFromPackage
 from genui.qsar import models
 from genui.utils.inspection import get_default_params
@@ -12,6 +13,7 @@ from genui.utils.inspection import get_default_params
 class EmbeddingCalculator(ABC):
     name = None
     _module = None
+    _model = models.EmbeddingCalculator
 
     def __init__(self, builder):
         self.builder = builder
@@ -25,11 +27,11 @@ class EmbeddingCalculator(ABC):
         return get_default_params(self._module, self.name)
 
     @classmethod
-    def getDjangoModel(cls, corePackage, update=False) -> models.EmbeddingCalculator:
+    def getDjangoModel(cls, corePackage, update=False):
         if not cls.name:
-            raise Exception('You have to specify a name for the embedding group in its class "group_name" property')
+            raise Exception('You have to specify a name for the embedding group in its class "name" property')
 
-        ret, ret_created = models.EmbeddingCalculator.objects.get_or_create(name=cls.name)
+        ret, ret_created = cls._model.objects.get_or_create(name=cls.name)
 
         # just return if we are not setting up a new instance
         if not ret_created and not update:
@@ -40,6 +42,12 @@ class EmbeddingCalculator(ABC):
             ret.save()
 
         return ret
+
+
+class ScaffoldCalculator(EmbeddingCalculator):
+    name = None
+    _module = importlib.import_module("qsprpred.data.chem.scaffolds")
+    _model = models.ScaffoldCalculator
 
 
 class EmbeddingBuilderMixIn:
