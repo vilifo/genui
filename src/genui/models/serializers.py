@@ -307,7 +307,7 @@ class ModelSerializer(serializers.HyperlinkedModelSerializer):
 
     def is_valid(self, *, raise_exception=False):
         ret = super().is_valid(raise_exception=raise_exception)
-        if "hyperParamOptStrategies" in self.validated_data["trainingStrategy"]:
+        if "trainingStrategy" in self.validated_data and "hyperParamOptStrategies" in self.validated_data["trainingStrategy"]:
             val_data = self.validated_data["trainingStrategy"]["validationStrategies"]
             if len(val_data) > 1:
                 raise serializers.ValidationError(

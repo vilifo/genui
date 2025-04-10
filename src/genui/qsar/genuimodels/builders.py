@@ -42,8 +42,7 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
         self.temp_dir = tempfile.TemporaryDirectory()
         self.dataset = None
 
-    def build(
-            self) -> qsar_models.QSARModel:  # TODO: kontrola parametrů při serializaci, generování endpointů
+    def build(self) -> qsar_models.QSARModel:  # TODO: kontrola parametrů při serializaci, generování endpointů
         if not self.validations:
             raise ImproperlyConfigured("You cannot build a QSAR model without validation strategies.")
 
@@ -66,7 +65,7 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
         dataset = self.saveActivities()
 
         self.recordProgress()
-        dataset.prepareDataset(feature_calculators=[calculator for calculator in self.embeddingCalculators])
+        dataset.prepareDataset(feature_calculators=self.embeddingCalculators)
 
         monitor = RecordProgressMonitor(self.recordProgress)
         monitor.on_fold_start = True
@@ -187,14 +186,14 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
                 inspect.signature(qsprpred_class.__init__).parameters if
                 hasattr(django_model, snake_to_camel(param))}
 
-    def fitAndValidate(self, X_train, y_train, X_valid, y_valid, y_predicted=None,
-                       perfClass=core_models.ModelPerformance, *args, **kwargs):
-        if not y_predicted:
-            model = self.algorithmClass(self)
-            model.fit(X_train, y_train)
-            y_predicted = model.predict(X_valid)
-        for validation in self.validations:
-            self.validate(validation, y_valid, y_predicted, perfClass, *args, **kwargs)
+    # def fitAndValidate(self, X_train, y_train, X_valid, y_valid, y_predicted=None,
+    #                    perfClass=core_models.ModelPerformance, *args, **kwargs):
+    #     if not y_predicted:
+    #         model = self.algorithmClass(self)
+    #         model.fit(X_train, y_train)
+    #         y_predicted = model.predict(X_valid)
+    #     for validation in self.validations:
+    #         self.validate(validation, y_valid, y_predicted, perfClass, *args, **kwargs)
 
     def validate(self, y_validated, y_predicted, perfClass=core_models.ModelPerformance, *args, **kwargs):
         for metric_class in self.metricClasses:
@@ -242,7 +241,7 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
                 target_props = {"name": activity_type.value, "task": "REGRESSION"}
             smiles = self.getSmiles(compounds)
             df = pd.DataFrame({"SMILES": smiles, activity_type.value: activities})
-            self.dataset = QSPRDataset("Dataset", [target_props], df, store_dir=self.temp_dir.name)
+            self.dataset = QSPRDataset(self.instance.name, [target_props], df, store_dir=self.temp_dir.name)
             return self.dataset
 
     def load_model(self):  # Backup, for future endeavours

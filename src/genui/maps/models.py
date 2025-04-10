@@ -146,5 +146,5 @@ class Point(models.Model):
         return self.molecule.providers.filter(id__in=[x.id for x in self.map.molsets.all()])
 
 class MappingStrategy(TrainingStrategy):
-    descriptors = models.ManyToManyField(EmbeddingCalculator)
+    embeddings = models.ManyToManyField(EmbeddingCalculator)
 

@@ -43,7 +43,7 @@ class MapTestCase(CompoundsMixIn, APITestCase):
                     "n_iter": 500,
                 },
                 "embeddings": [
-                    EmbeddingCalculator.objects.get(name="MORGANFP").id
+                    EmbeddingCalculator.objects.get(name="MorganFP").id
                 ]
             },
             "molsets" : [x.id for x in self.molsets]

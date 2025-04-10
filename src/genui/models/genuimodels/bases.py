@@ -388,11 +388,7 @@ class ModelBuilder(ABC):
 
     @abstractmethod
     def build(self) -> models.Model:
-        # self.model.fit(self.getX(), self.getY())
-        for validation in self.validations:
-            self.validate(validation)
-        self.saveFile()
-        return self.instance
+        pass
 
     @abstractmethod
     def validate(self, validation_strategy):
