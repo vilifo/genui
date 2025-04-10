@@ -194,24 +194,40 @@ class TemporalSplitSerializer(DataSplitSerializer):
         model = models.TemporalSplit
         fields = DataSplitSerializer.Meta.fields + ('timeSplit', 'timeProp')
 
+    def validate_timeSplit(self, value):
+        if value < 0.0 or value > 1.0:
+            raise serializers.ValidationError("Time split must be between 0 and 1.")
+        return value
+
 
 class GBMTDataSplitSerializer(DataSplitSerializer):
     clustering = serializers.PrimaryKeyRelatedField(required=False, queryset=models.MoleculeClusters.objects.all())
     testFraction = serializers.FloatField(required=False)  # mutually exclusive with nFolds
-    nFolds = serializers.IntegerField(required=False)
+
+    # nFolds = serializers.IntegerField(required=False)
 
     class Meta:
         model = models.GBMTDataSplit
-        fields = DataSplitSerializer.Meta.fields + ('clustering', 'testFraction', 'nFolds')
+        fields = DataSplitSerializer.Meta.fields + ('clustering', 'testFraction')
+
+    def validate_testFraction(self, value):
+        if value < 0.0 or value > 1.0:
+            raise serializers.ValidationError("Test fraction must be between 0 and 1.")
+        return value
 
 
 class GBMTRandomSplitSerializer(GBMTDataSplitSerializer):
     seed = serializers.IntegerField(required=False, default=42)
-    nInitialClusters = serializers.IntegerField(required=False)
+    nInitialClusters = serializers.IntegerField(required=False, min_value=10)
 
     class Meta:
         model = models.GBMTRandomSplit
         fields = GBMTDataSplitSerializer.Meta.fields + ('seed', 'nInitialClusters')
+
+    def validate_seed(self, value):
+        if value < 0 or value > 2**32 - 1:
+            raise serializers.ValidationError("Seed must be between 0 and 2**32 - 1.")
+        return value
 
 
 class ScaffoldSplitSerializer(GBMTDataSplitSerializer):
@@ -229,6 +245,11 @@ class ClusterSerializer(GBMTDataSplitSerializer):
         model = models.ClusterSplit
         fields = GBMTDataSplitSerializer.Meta.fields + ('seed',)
 
+    def validate_seed(self, value):
+        if value < 0 or value > 2**32 - 1:
+            raise serializers.ValidationError("Seed must be between 0 and 2**32 - 1.")
+        return value
+
 
 class MoleculeClustersSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
@@ -238,11 +259,16 @@ class MoleculeClustersSerializer(serializers.HyperlinkedModelSerializer):
 
 class RandomClustersSerializer(MoleculeClustersSerializer):
     seed = serializers.IntegerField(required=False, default=42)
-    nClusters = serializers.IntegerField(required=False, min_value=1)
+    nClusters = serializers.IntegerField(required=False, min_value=10)
 
     class Meta:
         model = models.RandomClusters
         fields = MoleculeClustersSerializer.Meta.fields + ('seed', 'nClusters')
+
+    def validate_seed(self, value):
+        if value < 0 or value > 2 ** 32 - 1:
+            raise serializers.ValidationError("Seed must be between 0 and 2**32 - 1.")
+        return value
 
 
 class ScaffoldClustersSerializer(MoleculeClustersSerializer):
@@ -255,7 +281,8 @@ class ScaffoldClustersSerializer(MoleculeClustersSerializer):
 
 
 class FPSimilarityClustersSerializer(MoleculeClustersSerializer):
-    FPCalculator = serializers.PrimaryKeyRelatedField(many=False, queryset=models.EmbeddingCalculator.objects.all())
+    FPCalculator = serializers.PrimaryKeyRelatedField(required=True, many=False,
+                                                      queryset=models.EmbeddingCalculator.objects.all())
 
     class Meta:
         model = models.FPSimilarityClusters
@@ -264,12 +291,16 @@ class FPSimilarityClustersSerializer(MoleculeClustersSerializer):
 
 class FPSimilarityMaxMinClustersSerializer(FPSimilarityClustersSerializer):
     seed = serializers.IntegerField(required=False)
-    nClusters = serializers.IntegerField(required=False, min_value=1)
+    nClusters = serializers.IntegerField(required=False, min_value=10)
 
     class Meta:
         model = models.FPSimilarityMaxMinClusters
         fields = FPSimilarityClustersSerializer.Meta.fields + ('seed', 'nClusters')
 
+    def validate_seed(self, value):
+        if value < 0 or value > 2**32 - 1:
+            raise serializers.ValidationError("Seed must be between 0 and 2**32 - 1.")
+        return value
 
 class FPSimilarityLeaderPickerClustersSerializer(FPSimilarityClustersSerializer):
     similarityThreshold = serializers.FloatField(required=True)
@@ -277,6 +308,11 @@ class FPSimilarityLeaderPickerClustersSerializer(FPSimilarityClustersSerializer)
     class Meta:
         model = models.FPSimilarityLeaderPickerClusters
         fields = FPSimilarityClustersSerializer.Meta.fields + ('similarityThreshold',)
+
+    def validate_similarityThreshold(self, value):
+        if value < 0.0 or value > 1.0:
+            raise serializers.ValidationError("Similarity threshold must be between 0 and 1.")
+        return value
 
 
 class QSPRPredSklearnModelSerializer(serializers.Serializer):

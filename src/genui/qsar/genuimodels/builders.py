@@ -4,22 +4,26 @@ builders
 Created by: Martin Sicho
 On: 15-01-20, 12:55
 """
+import json
+import importlib
 import inspect
 import tempfile
 import traceback
 from abc import ABC
+
 from rdkit import Chem
 import numpy as np
 import pandas as pd
-from django.core.exceptions import ImproperlyConfigured
+
 from qsprpred.data import QSPRDataset
 from qsprpred.data.sampling import splits
 from qsprpred import models as qsprpred_models
 from qsprpred.models import CrossValAssessor, TestSetAssessor
 from sklearn.model_selection import KFold, StratifiedKFold
-from genui.compounds.models import Molecule
 
-from genui.utils.inspection import snake_to_camel
+from django.core.exceptions import ImproperlyConfigured
+from genui.compounds.models import Molecule
+from genui.utils.inspection import snake_to_camel, get_default_params
 from .qsprpred_utils import RecordProgressMonitor, MetricsAggregator
 from genui.compounds.models import ActivityTypes, ActivitySet
 from genui.models import models as core_models
@@ -27,8 +31,7 @@ from genui.models.genuimodels.bases import Algorithm, PredictionMixIn, Validatio
 from genui.qsar import models as qsar_models
 from .bases import EmbeddingBuilderMixIn
 
-
-
+clustering_module = importlib.import_module("qsprpred.data.chem.clustering")
 
 
 class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMixIn, ProgressMixIn, ModelBuilder, ABC):
@@ -40,7 +43,7 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
         self.dataset = None
 
     def build(
-            self) -> qsar_models.QSARModel:  # TODO: dopsat splity, kontrola parametrů při serializaci, generování endpointů
+            self) -> qsar_models.QSARModel:  # TODO: kontrola parametrů při serializaci, generování endpointů
         if not self.validations:
             raise ImproperlyConfigured("You cannot build a QSAR model without validation strategies.")
 
@@ -76,13 +79,16 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
             if hasattr(validation, 'dataSplit') and hasattr(validation, 'cvFolds'):
                 if self.hyper_param_opt:
                     optimizer_class = getattr(qsprpred_models, self.hyper_param_opt.__class__.__name__)
-                    kwargs = {"param_grid":self.hyper_param_opt.searchSpace,
-                              "model_assessor":CrossValAssessor(self.hypo_metric(self)),
-                              "score_aggregation":self.hyper_param_aggregator(self)}
+                    kwargs = {"param_grid": self.hyper_param_opt.searchSpace,
+                              "model_assessor": CrossValAssessor(self.hypo_metric(self)),
+                              "score_aggregation": self.hyper_param_aggregator(self)}
                     if "nTrials" in dir(self.hyper_param_opt):
                         kwargs["n_trials"] = self.hyper_param_opt.nTrials
                     optimizer = optimizer_class(**kwargs)
-                    optimizer.optimize(self.model.model, dataset)
+                    params = optimizer.optimize(self.model.model, dataset)
+                    old_params = json.loads(self.model.params['parameters'])
+                    old_params.update(**params)
+                    self.model.params["parameters"] = json.dumps(old_params)
 
                 split_instance = self._init_split(validation)
                 dataset.split(split_instance)
@@ -157,14 +163,29 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
         assert len(real_predictions) == 0
         return np.array(predictions)
 
-    @staticmethod
-    def _init_split(validation):
+    def _init_split(self, validation):
         split_name = validation.dataSplit.__class__.__name__
         split_instance = getattr(splits, split_name)
-        split_params = {param: getattr(validation.dataSplit, snake_to_camel(param)) for param in
-                        inspect.signature(split_instance.__init__).parameters if
-                        hasattr(validation.dataSplit, snake_to_camel(param))}
+        split_params = self._extract_kwargs(validation.dataSplit, split_instance)
+
+        kwargs = get_default_params(split_name, splits.__name__)
+        if "dataset" in kwargs:
+            split_params["dataset"] = self.dataset
+        if "scaffold" in kwargs:
+            split_params["scaffold"] = self._init_embedding_calculator(split_params["scaffold"], "scaffolds")
+        if "clustering" in kwargs:
+            clustering = getattr(clustering_module, split_params["clustering"].__class__.__name__)
+            fp_calculator = self._init_embedding_calculator(split_params["clustering"].FPCalculator)
+            clustering_kwargs = self._extract_kwargs(split_params["clustering"], clustering)
+            clustering_kwargs["fp_calculator"] = fp_calculator
+            split_params["clustering"] = clustering(**clustering_kwargs)
         return split_instance(**split_params)
+
+    @staticmethod
+    def _extract_kwargs(django_model, qsprpred_class):
+        return {param: getattr(django_model, snake_to_camel(param)) for param in
+                inspect.signature(qsprpred_class.__init__).parameters if
+                hasattr(django_model, snake_to_camel(param))}
 
     def fitAndValidate(self, X_train, y_train, X_valid, y_valid, y_predicted=None,
                        perfClass=core_models.ModelPerformance, *args, **kwargs):

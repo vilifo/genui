@@ -53,12 +53,15 @@ class ScaffoldCalculator(EmbeddingCalculator):
 class EmbeddingBuilderMixIn:
 
     @staticmethod
-    def findEmbeddingClass(name, corePackage):
-        module = importFromPackage(corePackage, "embeddings")
+    def findEmbeddingClass(name, corePackage, subtype="embeddings"):
+        module = importFromPackage(corePackage, subtype)
         return findSubclassByID(EmbeddingCalculator, module, "name", name)
 
     def __init__(self, instance: models.Model, progress=None, onFitCall=None):
         super().__init__(instance, progress, onFitCall)
         self.molsets = [self.instance.molset] if hasattr(self.instance, "molset") else self.instance.molsets.all()
-        classes = {self.findEmbeddingClass(x.name, x.corePackage): x.arguments for x in self.training.embeddings.all()}
-        self.embeddingCalculators = [class_(self)(**kwargs) for class_, kwargs in classes.items()]
+        self.embeddingCalculators = [self._init_embedding_calculator(x) for x in self.training.embeddings.all()]
+
+    def _init_embedding_calculator(self, django_model, subtype="embeddings"):
+        class_ = self.findEmbeddingClass(django_model.name, django_model.corePackage, subtype)
+        return class_(self)(**django_model.arguments) if class_ else None

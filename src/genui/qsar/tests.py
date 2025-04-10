@@ -11,7 +11,8 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 from genui.compounds.models import ActivityTypes, ActivityUnits
 from genui.compounds.extensions.chembl.tests import CompoundsMixIn
-from genui.qsar.models import QSARModel, EmbeddingCalculator, ModelActivitySet
+from genui.qsar.models import QSARModel, EmbeddingCalculator, ScaffoldCalculator, ModelActivitySet, \
+    GBMTRandomSplit, ScaffoldSplit, ClusterSplit, FPSimilarityMaxMinClusters, FPSimilarityLeaderPickerClusters
 from genui.models.models import ModelPerformance, Algorithm, AlgorithmMode, ModelFile, ModelPerformanceMetric, \
     BasicValidationStrategy, RandomSplit, ValueAggregationFunction
 from .genuimodels import builders
@@ -526,16 +527,31 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
     def test_hyperparameter_optimization(self):
         self.createTestQSARModel(hyperParamOptStrategies=[{
             "resourcetype": "GridSearchOptimization",
-            "searchSpace": {"n_estimators": [150, 200]},
+            "searchSpace": {"n_estimators": [150, 200], "criterion": ["gini", "entropy", "log_loss"]},
             "metric": ModelPerformanceMetric.objects.get(name="Accuracy").id,
             "scoreAggregation": ValueAggregationFunction.objects.get(name="Mean").id
         }], )
         self.createTestQSARModel(hyperParamOptStrategies=[{
             "resourcetype": "OptunaOptimization",
-            "searchSpace": {"n_estimators": ["int", 100, 250],},
+            "searchSpace": {"n_estimators": ["int", 100, 250], "criterion": ["categorical", ["gini", "entropy", "log_loss"]]},
             "metric": ModelPerformanceMetric.objects.get(name="F1").id,
             "scoreAggregation": ValueAggregationFunction.objects.get(name="Mean").id,
             "nTrials": 10,
         }])
 
-    def
+    def test_gbmt_random_and_scaffold_splits(self):
+        scaffold = ScaffoldCalculator.objects.get_or_create(name="BemisMurckoRDKit")[0]
+        splits = [
+            GBMTRandomSplit.objects.create(testFraction=0.2, nInitialClusters=10, seed=42),
+            ScaffoldSplit.objects.create(scaffold=scaffold, testFraction=0.2),
+        ]
+        for s in splits:
+            self.createTestQSARModel(dataSplit=s)
+
+    def test_cluster_splits(self):
+        clustering_algs = [
+            FPSimilarityMaxMinClusters.objects.create(FPCalculator=EmbeddingCalculator.objects.get(name="MorganFP"), nClusters=5, seed=124),
+            FPSimilarityLeaderPickerClusters.objects.create(FPCalculator=EmbeddingCalculator.objects.get(name="MorganFP"), similarityThreshold=0.7)
+        ]
+        for clustering in clustering_algs:
+            self.createTestQSARModel(dataSplit=ClusterSplit.objects.create(clustering=clustering, testFraction=0.2))

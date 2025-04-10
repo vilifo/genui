@@ -125,6 +125,35 @@ class OptunaOptimizationInitSerializer(HyperparameterOptimizationStrategyInitSer
         model = OptunaOptimization
         fields = HyperparameterOptimizationStrategyInitSerializer.Meta.fields + ('nTrials',)
 
+    def validate_nTrials(self, value):
+        if value < 1:
+            raise serializers.ValidationError("nTrials must be greater than 0.")
+        return value
+
+    def validate_searchSpace(self, value):
+        def check_type(type_):
+            if type_ not in ['int', 'float']:
+                raise serializers.ValidationError("type must be int or float.")
+
+        for param in value:
+            if len(param) == 3:
+                type_, min_, max_ = param
+                check_type(type_)
+                if type_ == 'int' and min_ >= max_:
+                    if not isinstance(min_, int) or not isinstance(max_, int):
+                        raise serializers.ValidationError("min and max must be integers for int type.")
+                    raise serializers.ValidationError("min must be less than max for int type.")
+                elif type_ == 'float' and min_ >= max_:
+                    if not isinstance(min_, float) or not isinstance(max_, float):
+                        raise serializers.ValidationError("min and max must be floats for float type.")
+                    raise serializers.ValidationError("min must be less than max for float type.")
+            elif len(param) == 2:
+                type_, params = param
+                if type_ != 'categorical':
+                    raise serializers.ValidationError("type must be categorical when specifying a list of choices.")
+
+        return value
+
 
 class OptunaOptimizationSerializer(OptunaOptimizationInitSerializer):
     nTrials = serializers.IntegerField(min_value=1)
@@ -351,6 +380,16 @@ class RandomSplitSerializer(DataSplitSerializer):
         model = RandomSplit
         fields = DataSplitSerializer.Meta.fields + ('testFraction', 'seed')
 
+    def validate_seed(self, value):
+        if value < 0 or value > 2**32 - 1:
+            raise serializers.ValidationError("Seed must be between 0 and 2**32 - 1.")
+        return value
+
+    def validate_testFraction(self, value):
+        if value < 0 or value > 1:
+            raise serializers.ValidationError("testFraction must be between 0 and 1.")
+        return value
+
 
 class BootstrapSplitSerializer(DataSplitSerializer):
     split = serializers.PrimaryKeyRelatedField(many=False, queryset=models.DataSplit.objects.all())
@@ -358,3 +397,13 @@ class BootstrapSplitSerializer(DataSplitSerializer):
     class Meta:
         model = models.BootstrapSplit
         fields = DataSplitSerializer.Meta.fields + ('nBootstraps', 'seed', 'split')
+
+    def validate_seed(self, value):
+        if value < 0 or value > 2**32 - 1:
+            raise serializers.ValidationError("Seed must be between 0 and 2**32 - 1.")
+        return value
+
+    def validate_nBootstraps(self, value):
+        if value < 1:
+            raise serializers.ValidationError("nBootstraps must be greater than 0.")
+        return value
