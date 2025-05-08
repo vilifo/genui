@@ -29,6 +29,7 @@ class Algorithm(ABC):
     name = None
     parameters = {}
     CLASSIFICATION = 'classification'
+    MULTICLASS = 'multiclass'
     REGRESSION = 'regression'
     GENERATOR = 'generator'
     MAP = 'map'

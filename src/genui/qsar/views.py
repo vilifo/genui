@@ -5,17 +5,19 @@ from drf_yasg.utils import swagger_auto_schema
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework import serializers as rest_serializers
 
 from genui.models.models import AlgorithmMode
-from genui.models.views import ModelViewSet, AlgorithmViewSet, MetricsViewSet, PredictMixIn
+from genui.models.views import ModelViewSet, AlgorithmViewSet, MetricsViewSet, PredictMixIn, DataSplitViewSet
 from genui.qsar.genuimodels.builders import BasicQSARModelBuilder
 from genui.models.genuimodels.bases import Algorithm
+from genui.qsar.genuimodels.bases import EmbeddingBuilderMixIn
 from . import models
 from . import serializers
 from .tasks import buildQSARModel, predictWithQSARModel
 from genui.utils.extensions.tasks.utils import runTask
 from genui import celery_app
-from genui.utils.inspection import get_sklearn_models, get_default_params
+from genui.utils.inspection import get_default_params, get_default_params_django, sklearn_regressors, sklearn_classifiers, SKLEARN_MODELS, SKLEARN_MODELS_PARAMS
 
 
 class QSARModelViewSet(PredictMixIn, ModelViewSet):
@@ -51,7 +53,7 @@ class QSARModelViewSet(PredictMixIn, ModelViewSet):
         try:
             instance = self.get_queryset().get(pk=pk)
         except models.QSARModel.DoesNotExist:
-            return Response({"error" : f"Model not found: {pk}"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": f"Model not found: {pk}"}, status=status.HTTP_404_NOT_FOUND)
 
         if request.method == 'GET':
             predictions = instance.predictions.all()
@@ -84,28 +86,156 @@ class QSARModelViewSet(PredictMixIn, ModelViewSet):
                     if task and task.id:
                         celery_app.control.revoke(task_id=task.id, terminate=True)
                     created.delete()
-                    return Response({"error" : repr(exp)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    return Response({"error": repr(exp)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         elif request.method == 'DELETE':
             instance.predictions.all().delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
+        else:
+            return Response({"error": "Method not allowed"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
 class EmbeddingGroupsViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
     viewsets.GenericViewSet
 ):
     queryset = models.EmbeddingCalculator.objects.all()
     serializer_class = serializers.EmbeddingCalculatorSerializer
+
+    @swagger_auto_schema(
+        methods=['GET']
+        , responses={
+            200: "List of all available embedding calculator names",
+        }
+    )
+    @action(detail=False, methods=['get'], url_path='list')
+    def list_all(self, request):
+        calculators = self.get_queryset().values_list('name', flat=True)
+        return Response(list(calculators))
+
+    @swagger_auto_schema(
+        methods=['GET']
+        , responses={
+            200: "Default parameters for the embedding calculator",
+        }
+    )
+    @action(detail=True, methods=['get'])
+    def params(self, request, pk=None):
+        try:
+            instance = self.get_queryset().get(pk=pk)
+        except models.EmbeddingCalculator.DoesNotExist:
+            return Response({"error": f"Embedding calculator not found: {pk}"}, status=status.HTTP_404_NOT_FOUND)
+
+        class_ = EmbeddingBuilderMixIn.findEmbeddingClass(instance.name, instance.corePackage)
+        if not class_:
+            return Response({"error": f"Embedding class not found for: {instance.name}"},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        calculator = class_(None)
+        data = calculator.get_default_parameters()
+        if hasattr(calculator, "get_descriptors_names"):
+            data["descriptors"] = calculator.get_descriptors_names()
+        return Response(data)
+
+    @swagger_auto_schema(
+        methods=['GET']
+        , responses={
+            200: "Default parameters for the embedding calculator",
+        }
+    )
+    @action(detail=False, methods=['get'], url_path='(?P<name>[^/.]+)/params')
+    def params_by_name(self, request, name=None):
+        try:
+            instance = self.get_queryset().get(name=name)
+        except models.EmbeddingCalculator.DoesNotExist:
+            return Response({"error": f"Embedding calculator not found: {name}"}, status=status.HTTP_404_NOT_FOUND)
+
+        class_ = EmbeddingBuilderMixIn.findEmbeddingClass(instance.name, instance.corePackage)
+        if not class_:
+            return Response({"error": f"Embedding class not found for: {instance.name}"},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        calculator = class_(None)
+        data = calculator.get_default_parameters()
+        if hasattr(calculator, "get_descriptors_names"):
+            data["descriptors"] = calculator.get_descriptors_names()
+        return Response(data)
+
 
 class QSARAlgorithmViewSet(AlgorithmViewSet):
 
     def get_queryset(self):
         current = super().get_queryset()
         return current.filter(validModes__name__in=(Algorithm.CLASSIFICATION, Algorithm.REGRESSION)).distinct('id')
+
+
+class QSARDataSplitViewSet(DataSplitViewSet):
+
+    @swagger_auto_schema(
+        methods=['GET']
+        , responses={
+            200: "List of all available datasplit types",
+        }
+    )
+    @action(detail=False, methods=['get'], url_path='list')
+    def list_all(self, request):
+        from django.contrib.contenttypes.models import ContentType
+        from genui.models.models import DataSplit
+
+        # Get all subclasses of DataSplit
+        datasplit_types = []
+        for ct in ContentType.objects.filter(app_label__in=['models', 'qsar']):
+            model_class = ct.model_class()
+            if model_class and issubclass(model_class, DataSplit) and model_class != DataSplit:
+                datasplit_types.append(model_class.__name__)
+
+        return Response(datasplit_types)
+
+    @swagger_auto_schema(
+        methods=['GET']
+        , responses={
+            200: "Default parameters for the datasplit type",
+        }
+    )
+    @action(detail=False, methods=['get'], url_path='(?P<name>[^/.]+)/params')
+    def params_by_name(self, request, name=None):
+        from django.contrib.contenttypes.models import ContentType
+        from genui.models.models import DataSplit
+
+        model_class = None
+        for ct in ContentType.objects.filter(app_label__in=['models', 'qsar']):
+            cls = ct.model_class()
+            if cls and issubclass(cls, DataSplit) and cls.__name__ == name:
+                model_class = cls
+                break
+
+        if not model_class:
+            return Response({"error": f"Datasplit type not found: {name}"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            module_name = model_class.__module__
+            class_name = model_class.__name__
+            params = get_default_params_django(class_name, module_name)
+            return Response(params)
+        except Exception as e:
+            return Response({"error": f"Failed to get parameters: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @swagger_auto_schema(
+        methods=['GET']
+        , responses={
+            200: "List of all available scaffold calculators",
+        }
+    )
+    @action(detail=False, methods=['get'], url_path='scaffolds/list')
+    def list_scaffolds(self, request):
+        scaffolds = models.ScaffoldCalculator.objects.values_list('name', flat=True)
+        return Response(list(scaffolds))
+
 
 class QSARMetricsViewSet(MetricsViewSet):
 
@@ -120,11 +250,39 @@ class QSPRPredSklearnModelViewSet(viewsets.ViewSet):
     serializer_class = serializers.QSPRPredSklearnModelSerializer
 
     def list(self, request):
-        r, c = get_sklearn_models()
+        data = [name for name in SKLEARN_MODELS]
+        serializer = rest_serializers.ListSerializer(data=data, child=rest_serializers.CharField())
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.data)
+
+    def retrieve(self, request, algorithm):
         data = []
-        for name, cls in r.items():
-            data.append({'name': name, 'type': 'Regressor', 'params': get_default_params(None, cls)})
-        for name, cls in c.items():
-            data.append({'name': name, 'type': 'Classifier', 'params': get_default_params(None, cls)})
+        if algorithm in sklearn_regressors:
+            cls = sklearn_regressors[algorithm]
+            data.append({'name': algorithm, 'type': 'Regressor', 'params': get_default_params(None, cls)})
+        elif algorithm in sklearn_classifiers:
+            cls = sklearn_classifiers[algorithm]
+            data.append({'name': algorithm, 'type': 'Classifier', 'params': get_default_params(None, cls)})
+        else:
+            return Response({"error": f"Algorithm not found: {algorithm}"}, status=status.HTTP_404_NOT_FOUND)
         serializer = serializers.QSPRPredSklearnModelSerializer(data, many=True)
         return Response(serializer.data)
+
+    def get_type(self, request, algorithm):
+        if algorithm in sklearn_regressors:
+            return Response("Regressor")
+        elif algorithm in sklearn_classifiers:
+            return Response("Classifier")
+        else:
+            return Response({"error": f"Algorithm not found: {algorithm}"}, status=status.HTTP_404_NOT_FOUND)
+
+    def get_params(self, request, algorithm):
+        if algorithm in sklearn_regressors:
+            cls = sklearn_regressors[algorithm]
+            data = get_default_params(None, cls)
+        elif algorithm in sklearn_classifiers:
+            cls = sklearn_classifiers[algorithm]
+            data = get_default_params(None, cls)
+        else:
+            return Response({"error": f"Algorithm not found: {algorithm}"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(data)

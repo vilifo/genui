@@ -39,9 +39,7 @@ class MapTestCase(CompoundsMixIn, APITestCase):
             "trainingStrategy": {
                 "algorithm": Algorithm.objects.get(name="PCA").id,
                 "mode": AlgorithmMode.objects.get(name="map").id,
-                "embeddings": [
-                    EmbeddingCalculator.objects.get(name="MorganFP").id
-                ]
+                "embeddings": [{"name":"MorganFP", "arguments": {"radius": 2, "nBits": 2048}}]
             },
             "molsets" : [x.id for x in self.molsets]
         }

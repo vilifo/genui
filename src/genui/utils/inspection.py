@@ -4,7 +4,7 @@ inspection
 Created by: Martin Sicho
 On: 4/30/20, 8:55 AM
 """
-
+import pprint
 import sys
 import re
 import pkgutil
@@ -14,6 +14,7 @@ import sklearn
 from sklearn.base import RegressorMixin, ClassifierMixin
 from abc import ABC
 from django.urls import path, include
+from django.db import models
 from genui import apps
 
 
@@ -68,7 +69,7 @@ def getSubclasses(cls):
     return set(cls.__subclasses__()).union([s for c in cls.__subclasses__() for s in getSubclasses(c)])
 
 
-def findSubclassByID(base, module, id_attr : str, id_attr_val : str):
+def findSubclassByID(base, module, id_attr: str, id_attr_val: str):
     """
     Function to fetch a given class from a certain module.
     It is identified by both its base class and a value of a
@@ -89,7 +90,9 @@ def findSubclassByID(base, module, id_attr : str, id_attr_val : str):
             continue
 
         if not hasattr(class_, id_attr):
-            raise Exception("Unspecified ID attribute on a class where it should be defined. Check if the class is properly annotated: ", repr(class_))
+            raise Exception(
+                "Unspecified ID attribute on a class where it should be defined. Check if the class is properly annotated: ",
+                repr(class_))
 
         if not (id_attr_val == getattr(class_, id_attr)):
             continue
@@ -159,9 +162,9 @@ def discover_apps_urls(app_names, prefix='', app_names_as_root=False):
         urls_module = disover_app_urls_module(app, parent='genui')
         if urls_module:
             urls.append(path(
-                    f'{prefix.rstrip("/") + "/" if prefix else ""}{app.split(".")[1] + "/" if app_names_as_root else ""}',
-                    include(urls_module.__name__)
-                )
+                f'{prefix.rstrip("/") + "/" if prefix else ""}{app.split(".")[1] + "/" if app_names_as_root else ""}',
+                include(urls_module.__name__)
+            )
             )
 
     return urls
@@ -175,6 +178,7 @@ def discover_extensions_urlpatterns(parent):
             ret.extend(urls.urlpatterns)
     return ret
 
+
 def get_non_abstract_classes_from_module(module):
     if isinstance(module, str):
         module = importlib.import_module(module)
@@ -185,29 +189,66 @@ def get_non_abstract_classes_from_module(module):
             classes.append(name)
     return classes
 
+
 def get_sklearn_models():
     regressors = {}
     classifiers = {}
+    omit_modules = {"ensemble", "gaussian_process", "kernel_ridge", "linear_model", "neighbors", "neural_network",
+                    "svm", "tree"}
 
     for _, module_name, _ in pkgutil.walk_packages(sklearn.__path__, prefix="sklearn."):
         try:
-            module = importlib.import_module(module_name)
-            for name, obj in inspect.getmembers(module):
-                if inspect.isclass(obj) and obj.__module__ == module_name:
-                    if (obj not in [RegressorMixin, ClassifierMixin, ABC]
-                            and not inspect.isabstract(obj)
-                            and not obj.__name__.startswith("_")):
-                        if issubclass(obj, RegressorMixin) and obj not in [RegressorMixin, ClassifierMixin]:
-                            regressors[name] = f"{module_name}.{name}"
-                        elif issubclass(obj, ClassifierMixin) and obj not in [RegressorMixin, ClassifierMixin]:
-                            classifiers[name] = f"{module_name}.{name}"
+            if set(module_name.split(".")) & omit_modules:
+                module = importlib.import_module(module_name)
+
+                for name, obj in inspect.getmembers(module):
+                    if inspect.isclass(obj) and obj.__module__ == module_name:
+                        if not inspect.isabstract(obj) and not obj.__name__.startswith("_"):
+                            if issubclass(obj, RegressorMixin) and obj not in [RegressorMixin, ClassifierMixin]:
+                                regressors[name] = f"{module_name}.{name}"
+                            elif issubclass(obj, ClassifierMixin) and obj not in [RegressorMixin, ClassifierMixin]:
+                                classifiers[name] = f"{module_name}.{name}"
         except Exception:
             pass
 
     return regressors, classifiers
 
-R, C = get_sklearn_models()
-SKLEARN_MODELS = R | C
+
+def get_sklearn_params_with_constraints(module_name, class_=None):
+    if class_ is None:
+        class_ = module_name.split('.')[-1]
+        module_name = '.'.join(module_name.split('.')[:-1])
+
+    module = importlib.import_module(module_name)
+    class_ = getattr(module, class_)
+    signature = inspect.signature(class_)
+
+    constraints = getattr(class_, "_parameter_constraints", {})
+
+    params = {}
+    for param_name, param in signature.parameters.items():
+        if param_name == "self":
+            continue
+        default = None if param.default is inspect.Parameter.empty else param.default
+        constraint = constraints.get(param_name, None)
+
+        if constraint is not None:
+            constraint = [str(c) for c in constraint] # TODO: pokud je vyber ze stringu vratit list, získat možné typy
+
+        params[param_name] = {
+            "default": default,
+            "constraints": constraint,
+            # "type": type_
+        }
+
+    return params
+
+
+sklearn_regressors, sklearn_classifiers = get_sklearn_models()
+SKLEARN_MODELS = sklearn_regressors | sklearn_classifiers
+SKLEARN_MODELS_PARAMS = {k: get_sklearn_params_with_constraints(v) for k, v in SKLEARN_MODELS.items()}
+# pprint.pprint(SKLEARN_MODELS_PARAMS)
+
 
 def get_default_params(class_=None, module_name=None):
     if class_ is None:
@@ -223,6 +264,34 @@ def get_default_params(class_=None, module_name=None):
         else:
             params[param_name] = param.default
     return params
+
+
+def get_default_params_django(class_=None, module_name=None):
+    django_field2python = {
+        "CharField": "str",
+        "TextField": "str",
+        "IntegerField": "int",
+        "FloatField": "float",
+        "BooleanField": "bool",
+        "DateField": "datetime.date",
+        "DateTimeField": "datetime.datetime",
+    }
+    if class_ is None:
+        class_ = module_name.split('.')[-1]
+        module_name = '.'.join(module_name.split('.')[:-1])
+    module = importlib.import_module(module_name)
+    model_class = getattr(module, class_)
+    parameters = {}
+    for field in model_class._meta.get_fields():
+        if isinstance(field, models.Field) and not field.auto_created and not isinstance(field, (models.ForeignKey,
+                                                                                                 models.OneToOneField,
+                                                                                                 models.ManyToManyField)):
+            field_type = field.get_internal_type()
+            field_type = django_field2python.get(field_type, field_type)
+            default_value = field.default if field.default != models.NOT_PROVIDED else None
+            parameters[field.name] = (field_type, default_value)
+    return parameters
+
 
 def camel_to_snake(name):
     return re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()

@@ -42,7 +42,7 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
         self.temp_dir = tempfile.TemporaryDirectory()
         self.dataset = None
 
-    def build(self) -> qsar_models.QSARModel:  # TODO: kontrola parametrů při serializaci, generování endpointů
+    def build(self) -> qsar_models.QSARModel:
         if not self.validations:
             raise ImproperlyConfigured("You cannot build a QSAR model without validation strategies.")
 
@@ -237,6 +237,8 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
             if self.training.mode.name == Algorithm.CLASSIFICATION:
                 target_props = {"name": activity_type.value, "task": "SINGLECLASS",
                                 "th": [self.training.activityThreshold], }
+            elif self.training.mode.name == Algorithm.MULTICLASS:
+                target_props = {"name": activity_type.value, "task": "MULTICLASS", "th": self.training.activityThreshold}
             else:
                 target_props = {"name": activity_type.value, "task": "REGRESSION"}
             smiles = self.getSmiles(compounds)

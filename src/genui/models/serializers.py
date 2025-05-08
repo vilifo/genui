@@ -307,7 +307,8 @@ class ModelSerializer(serializers.HyperlinkedModelSerializer):
 
     def is_valid(self, *, raise_exception=False):
         ret = super().is_valid(raise_exception=raise_exception)
-        if "trainingStrategy" in self.validated_data and "hyperParamOptStrategies" in self.validated_data["trainingStrategy"]:
+        if "trainingStrategy" in self.validated_data and "hyperParamOptStrategies" in self.validated_data[
+            "trainingStrategy"]:
             val_data = self.validated_data["trainingStrategy"]["validationStrategies"]
             if len(val_data) > 1:
                 raise serializers.ValidationError(
@@ -381,7 +382,7 @@ class RandomSplitSerializer(DataSplitSerializer):
         fields = DataSplitSerializer.Meta.fields + ('testFraction', 'seed')
 
     def validate_seed(self, value):
-        if value < 0 or value > 2**32 - 1:
+        if value < 0 or value > 2 ** 32 - 1:
             raise serializers.ValidationError("Seed must be between 0 and 2**32 - 1.")
         return value
 
@@ -399,7 +400,7 @@ class BootstrapSplitSerializer(DataSplitSerializer):
         fields = DataSplitSerializer.Meta.fields + ('nBootstraps', 'seed', 'split')
 
     def validate_seed(self, value):
-        if value < 0 or value > 2**32 - 1:
+        if value < 0 or value > 2 ** 32 - 1:
             raise serializers.ValidationError("Seed must be between 0 and 2**32 - 1.")
         return value
 

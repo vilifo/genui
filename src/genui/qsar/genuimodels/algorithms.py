@@ -1,7 +1,5 @@
-import ml2json
 from pandas import DataFrame, Series
 from qsprpred.models import SklearnModel
-import tempfile
 import tarfile
 import zipfile
 import os
@@ -12,6 +10,7 @@ from genui.models.models import ModelParameter
 from genui.models.genuimodels.bases import Algorithm, ModelNotFittedException
 from genui.models.models import ModelFileFormat
 from genui.utils.inspection import SKLEARN_MODELS
+
 
 class QSPRPredScikitModel(Algorithm):
     name = "QSPRPredScikitModel"
@@ -63,9 +62,9 @@ class QSPRPredScikitModel(Algorithm):
         is_regression = self.mode.name == self.REGRESSION
         if self.model:
             if is_regression:
-                return self.model.predict(X.values)
+                return self.model.predict(X)
             else:
-                return self.model.predictProba(X.values)
+                return self.model.predictProba(X)
         else:
             raise ModelNotFittedException("You have to fit the model first.")
 
@@ -74,7 +73,6 @@ class QSPRPredScikitModel(Algorithm):
             return self.model.predictMols(smiles)
         else:
             raise ModelNotFittedException("You have to fit the model first.")
-
 
     def load_model(self, path):
         if path.endswith('.zip'):
@@ -94,20 +92,20 @@ class QSPRPredScikitModel(Algorithm):
         return self._model
 
     def save_model(self, path):
-        self._model.save(True)
+        self._model.save(True) # TODO: Add units to saved model
         with tarfile.open(path, "w:gz") as tar:
             tar.add(os.path.join(self.temp_dir.name, self.model_name), arcname=self.model_name)
 
     @staticmethod
     def import_sklearn_model(model_name):
-            """Dynamically imports a model."""
-            if model_name not in SKLEARN_MODELS:
-                raise ValueError(f"Model '{model_name}' not found in algorithms dictionary.")
-            full_path = SKLEARN_MODELS[model_name]
-            module_path, class_name = full_path.rsplit(".", 1)
-            module = importlib.import_module(module_path)
-            model_class = getattr(module, class_name)
-            return model_class
+        """Dynamically imports a model."""
+        if model_name not in SKLEARN_MODELS:
+            raise ValueError(f"Model '{model_name}' not found in algorithms dictionary.")
+        full_path = SKLEARN_MODELS[model_name]
+        module_path, class_name = full_path.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        model_class = getattr(module, class_name)
+        return model_class
 
     def getDeserializer(self):
         return self.load_model
@@ -118,10 +116,14 @@ class QSPRPredScikitModel(Algorithm):
     @classmethod
     def getFileFormats(cls, attach_to=None):
         formats = [ModelFileFormat.objects.get_or_create(
-                       fileExtension=".tar.gz",
-                       description="A tar archive file."
-                    )[0],
+            fileExtension=".tar.gz",
+            description="A tar archive file."
+        )[0],
                    ]
         if attach_to:
             cls.attachToInstance(attach_to, formats, attach_to.fileFormats)
         return formats
+
+    @staticmethod
+    def endpoints():
+        return SKLEARN_MODELS

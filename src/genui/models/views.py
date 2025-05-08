@@ -17,13 +17,15 @@ from genui.utils.extensions.tasks.utils import runTask
 from genui.accounts.serializers import FilterToUserMixIn
 from genui.projects.serializers import FilterToProjectMixIn
 from genui.utils.pagination import GenuiPagination
-from genui.models.models import ModelFile, ModelPerformance, Algorithm, ModelPerformanceMetric, Model, ValueAggregationFunction
+from genui.models.models import ModelFile, ModelPerformance, Algorithm, ModelPerformanceMetric, Model, \
+    ValueAggregationFunction, DataSplit
 from genui.models.serializers import ModelFileSerializer, ModelPerformanceSerializer, AlgorithmSerializer, \
-    ModelPerformanceMetricSerializer, ValueAggregationFunctionSerializer
+    ModelPerformanceMetricSerializer, ValueAggregationFunctionSerializer, DataSplitSerializer
 
 
 class PerformancePagination(GenuiPagination):
     page_size = 10
+
 
 class FilterToModelMixin:
     lookup_field = "model"
@@ -35,16 +37,18 @@ class FilterToModelMixin:
             pk = self.kwargs["pk"]
             model_class = self.model_class if self.model_class else Model
             try:
-                if issubclass(self.__class__, FilterToUserMixIn) and self.request.user and not self.request.user.is_anonymous:
+                if issubclass(self.__class__,
+                              FilterToUserMixIn) and self.request.user and not self.request.user.is_anonymous:
                     model_class.objects.get(pk=pk, project__owner=self.request.user)
                 else:
                     model_class.objects.get(pk=pk)
             except model_class.DoesNotExist:
                 raise NotFound(f"No model found: {pk}.", status.HTTP_400_BAD_REQUEST)
             lookup = self.lookup_field + "__id"
-            return queryset.filter(**{ lookup: pk})
+            return queryset.filter(**{lookup: pk})
         else:
             return queryset
+
 
 class MetricsViewSet(
     mixins.ListModelMixin,
@@ -53,6 +57,7 @@ class MetricsViewSet(
 ):
     queryset = ModelPerformanceMetric.objects.all()
     serializer_class = ModelPerformanceMetricSerializer
+
 
 class AggregationFunctionViewSet(
     mixins.ListModelMixin,
@@ -72,6 +77,27 @@ class AlgorithmViewSet(
     serializer_class = AlgorithmSerializer
 
 
+class DataSplitViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet
+):
+    queryset = DataSplit.objects.all()
+    serializer_class = DataSplitSerializer
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            resource_type = self.request.data.get('resourcetype', None)
+            if resource_type == 'RandomSplit':
+                from genui.models.serializers import RandomSplitSerializer
+                return RandomSplitSerializer
+            elif resource_type == 'BootstrapSplit':
+                from genui.models.serializers import BootstrapSplitSerializer
+                return BootstrapSplitSerializer
+        return super().get_serializer_class()
+
+
 class ModelPerformanceListView(
     FilterToModelMixin,
     FilterToUserMixIn,
@@ -81,6 +107,7 @@ class ModelPerformanceListView(
     serializer_class = ModelPerformanceSerializer
     pagination_class = PerformancePagination
     owner_relation = "model__project__owner"
+
 
 class ModelFileView(
     FilterToModelMixin,
@@ -97,7 +124,7 @@ class ModelFileView(
         try:
             Model.objects.get(pk=self.kwargs['pk'], project__owner=request.user)
         except Model.DoesNotExist:
-            return Response({"error" : f"Model does not exist: {self.kwargs['pk']}"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": f"Model does not exist: {self.kwargs['pk']}"}, status=status.HTTP_404_NOT_FOUND)
 
         request.data["model"] = self.kwargs['pk']
         serializer = self.get_serializer_class()(data=request.data)
@@ -111,6 +138,7 @@ class ModelFileView(
             print(serializer.initial_data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
 class PredictMixIn:
     predict_task = None
 
@@ -119,6 +147,7 @@ class PredictMixIn:
             # FIXME: this should be checked in metaclass
             raise Exception("Predict task needs to be set.")
         return self.predict_task
+
 
 class BuildMixIn:
     init_serializer_class = None
@@ -149,6 +178,7 @@ class BuildMixIn:
             raise Exception("Build task needs to be set.")
         return self.build_task
 
+
 class ModelViewSet(
     FilterToProjectMixIn
     , FilterToUserMixIn
@@ -157,7 +187,10 @@ class ModelViewSet(
 ):
     owner_relation = "project__owner"
 
-    project_id_param = openapi.Parameter('project_id', openapi.IN_QUERY, description="ID of a project to limit the list of results to.", type=openapi.TYPE_NUMBER)
+    project_id_param = openapi.Parameter('project_id', openapi.IN_QUERY,
+                                         description="ID of a project to limit the list of results to.",
+                                         type=openapi.TYPE_NUMBER)
+
     @swagger_auto_schema(
         operation_description="List all models. Supply a project ID to get only models specific to a particular project."
         # , methods=['GET']

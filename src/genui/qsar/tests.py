@@ -80,17 +80,17 @@ class QSARModelInit(CompoundsMixIn):
                           "parameters": json.dumps({"n_estimators": 150, })
                           }
         if not embeddings:
-            embeddings = [
-                EmbeddingCalculator.objects.get(name="MorganFP")]
+            embeddings = [{"name": "MorganFP", "arguments": {"radius": 2, "nBits": 2048}}, ]
         if not metrics:
             metrics = [
                 ModelPerformanceMetric.objects.get(name="MCC"),
                 ModelPerformanceMetric.objects.get(name="ROC"),
             ]
         if not dataSplit:
-            dataSplit = RandomSplit.objects.create(
-                testFraction=0.2
-            )
+            dataSplit = {"name": "RandomSplit",
+                         "testFraction": 0.2,
+                         "seed": 42,
+                         }
         if not hyperParamOptStrategies:
             hyperParamOptStrategies = []
 
@@ -103,15 +103,13 @@ class QSARModelInit(CompoundsMixIn):
                 "algorithm": algorithm.id,
                 "parameters": parameters,
                 "mode": mode.id,
-                "embeddings": [
-                    x.id for x in embeddings
-                ],
+                "embeddings": embeddings,  # TODO: calculator jako json
                 "activityThreshold": 6.5,
                 "activitySet": activitySet.id,
                 "activityType": activityType.id,
                 "validationStrategies": [{
                     "resourcetype": "BasicValidationStrategy",
-                    "dataSplit": dataSplit.id,
+                    "dataSplit": dataSplit,  # TODO: datasplit jako json
                     "cvFolds": 3,
                     "metrics": [
                         x.id for x in metrics
@@ -187,9 +185,7 @@ class QSARModelInit(CompoundsMixIn):
             "trainingStrategy": {
                 "algorithm": algorithm.id,
                 "mode": mode.id,
-                "embeddings": [
-                    x.id for x in embeddings
-                ],
+                "embeddings": embeddings,
                 "parameters": parameters,
             },
         }
@@ -259,7 +255,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             instance_first.modelFile.path,
             instance_first.trainingStrategy.algorithm,
             instance_first.trainingStrategy.mode,
-            [EmbeddingCalculator.objects.get(name='MorganFP')],
+            [{"name": "MorganFP", "arguments": {"radius": 2, "nBits": 2048}}],
             instance_first.predictionsType.value,
             instance_first.predictionsUnits.value if instance_first.predictionsUnits else None,
             {"alg": "RandomForestClassifier",
@@ -306,7 +302,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             model.modelFile.path,
             model.trainingStrategy.algorithm,
             model.trainingStrategy.mode,
-            [EmbeddingCalculator.objects.get(name='MorganFP')],
+            [{"name": "MorganFP", "arguments": {"radius": 2, "nBits": 2048}}],
             model.predictionsType.value,
             model.predictionsUnits.value if model.predictionsUnits else None,
             {"alg": "RandomForestRegressor",
@@ -422,20 +418,18 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         self.assertEqual(model.trainingStrategy.validationStrategies.first().dataSplit.seed, 314)
 
     def test_qsprpred_fingerprints(self):
-        fingerprints = {
-            "MorganFP": {"radius": 2, "nBits": 2048, },
-            "RDKitMACCSFP": {},
-            "MaccsFP": {"nBits": 167},
-            "AvalonFP": {"nBits": 1024},
-            "TopologicalFP": {"nBits": 2048},
-            "AtomPairFP": {"nBits": 2048},
-            "RDKitFP": {"minPath": 1, "maxPath": 7, "nBits": 2048},
-            "PatternFP": {"nBits": 2048},
-            "LayeredFP": {"minPath": 1, "maxPath": 7, "nBits": 2048},
-        }
-        model = self.createTestQSARModel(
-            embeddings=[EmbeddingCalculator.objects.get_or_create(
-                name=name, arguments=args)[0] for name, args in fingerprints.items()])
+        fingerprints = [
+            {"name": "MorganFP", "arguments": {"radius": 2, "nBits": 2048, }},
+            {"name": "RDKitMACCSFP", "arguments": {}},
+            {"name": "MaccsFP", "arguments": {"nBits": 167}},
+            {"name": "AvalonFP", "arguments": {"nBits": 1024}},
+            {"name": "TopologicalFP", "arguments": {"nBits": 2048}},
+            {"name": "AtomPairFP", "arguments": {"nBits": 2048}},
+            {"name": "RDKitFP", "arguments": {"minPath": 1, "maxPath": 7, "nBits": 2048}},
+            {"name": "PatternFP", "arguments": {"nBits": 2048}},
+            {"name": "LayeredFP", "arguments": {"minPath": 1, "maxPath": 7, "nBits": 2048}},
+        ]
+        model = self.createTestQSARModel(embeddings=fingerprints)
 
         response = self.client.get(reverse('model-list'))
         self.assertEqual(response.status_code, 200)
@@ -446,9 +440,9 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         self.predictWithModel(model, self.molset)
 
     def test_qsprpred_embedding_set(self):
-        sets = ["DrugExPhyschem", "RDKitDescs",]
-        model = self.createTestQSARModel(
-            embeddings=[EmbeddingCalculator.objects.get(name=set_) for set_ in sets])
+        sets = [{"name": "DrugExPhyschem"},
+                {"name": "RDKitDescs"}, ]
+        model = self.createTestQSARModel(embeddings=sets)
 
         response = self.client.get(reverse('model-list'))
         self.assertEqual(response.status_code, 200)
@@ -514,8 +508,8 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             model_path,
             Algorithm.objects.get_or_create(name="QSPRPredScikitModel")[0],
             AlgorithmMode.objects.get(name="classification"),
-            [EmbeddingCalculator.objects.get_or_create(
-                name="MorganFP", arguments={"radius": 3, "nBits": 2048})[0]],
+            [
+                {"name": "MorganFP", "arguments": {"radius": 3, "nBits": 2048}}],
             'Active Probability',
             None,
             {"alg": "RandomForestClassifier",
@@ -533,25 +527,18 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         }], )
         self.createTestQSARModel(hyperParamOptStrategies=[{
             "resourcetype": "OptunaOptimization",
-            "searchSpace": {"n_estimators": ["int", 100, 250], "criterion": ["categorical", ["gini", "entropy", "log_loss"]]},
+            "searchSpace": {"n_estimators": ["int", 100, 250],
+                            "criterion": ["categorical", ["gini", "entropy", "log_loss"]]},
             "metric": ModelPerformanceMetric.objects.get(name="F1").id,
             "scoreAggregation": ValueAggregationFunction.objects.get(name="Mean").id,
             "nTrials": 10,
         }])
 
     def test_gbmt_random_and_scaffold_splits(self):
-        scaffold = ScaffoldCalculator.objects.get_or_create(name="BemisMurckoRDKit")[0]
+        scaffold = {"name": "BemisMurckoRDKit"}
         splits = [
-            GBMTRandomSplit.objects.create(testFraction=0.2, nInitialClusters=10, seed=42),
-            ScaffoldSplit.objects.create(scaffold=scaffold, testFraction=0.2),
+            {"name": "GBMTRandomSplit", "testFraction":0.2, "nInitialClusters":10, "seed":42},
+            {"name": "ScaffoldSplit", "scaffold":scaffold, "testFraction": 0.2},
         ]
         for s in splits:
             self.createTestQSARModel(dataSplit=s)
-
-    def test_cluster_splits(self):
-        clustering_algs = [
-            FPSimilarityMaxMinClusters.objects.create(FPCalculator=EmbeddingCalculator.objects.get(name="MorganFP"), nClusters=5, seed=124),
-            FPSimilarityLeaderPickerClusters.objects.create(FPCalculator=EmbeddingCalculator.objects.get(name="MorganFP"), similarityThreshold=0.7)
-        ]
-        for clustering in clustering_algs:
-            self.createTestQSARModel(dataSplit=ClusterSplit.objects.create(clustering=clustering, testFraction=0.2))

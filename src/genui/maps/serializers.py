@@ -10,6 +10,7 @@ from genui.compounds.models import MolSet, Molecule
 from genui.compounds.serializers import GenericMolSetSerializer
 from genui.models.serializers import ModelSerializer, TrainingStrategySerializer, TrainingStrategyInitSerializer, \
     ModelFileSerializer
+from genui.qsar.models import EmbeddingCalculator
 from genui.qsar.serializers import EmbeddingCalculatorSerializer
 from . import models
 
@@ -21,7 +22,7 @@ class MappingStrategySerializer(TrainingStrategySerializer):
         fields = TrainingStrategySerializer.Meta.fields + ("embeddings",)
 
 class MappingStrategyInitSerializer(TrainingStrategyInitSerializer):
-    embeddings = serializers.PrimaryKeyRelatedField(many=True, queryset=models.EmbeddingCalculator.objects.all(), allow_empty=False)
+    embeddings = serializers.PrimaryKeyRelatedField(many=True, queryset=EmbeddingCalculator.objects.all(), allow_empty=False)
 
     class Meta:
         model = models.MappingStrategy
@@ -45,6 +46,19 @@ class MapInitSerializer(MapSerializer):
         model = models.Map
         fields = MapSerializer.Meta.fields
         read_only_fields = MapSerializer.Meta.read_only_fields
+
+    def is_valid(self, *, raise_exception=False):
+        initial_data = self.initial_data
+        if "trainingStrategy" in initial_data and "embeddings" in initial_data["trainingStrategy"]:
+            embeddings = []
+            for emb in initial_data["trainingStrategy"]["embeddings"]:
+                if isinstance(emb, dict):
+                    eid, _ = EmbeddingCalculator.objects.get_or_create(**emb)
+                    embeddings.append(eid.id)
+                else:
+                    embeddings.append(emb)
+            initial_data["trainingStrategy"]["embeddings"] = embeddings
+        return super().is_valid(raise_exception=raise_exception)
 
     def create(self, validated_data, **kwargs):
         molsets = validated_data.pop('molsets')

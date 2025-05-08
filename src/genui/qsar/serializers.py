@@ -16,6 +16,7 @@ from genui.models.serializers import TrainingStrategySerializer, ModelSerializer
     DataSplitSerializer
 from genui.models import models as genui_models
 from . import models
+from .models import EmbeddingCalculator
 from ..utils.inspection import get_default_params, SKLEARN_MODELS
 
 
@@ -78,6 +79,39 @@ class QSARModelInitSerializer(QSARModelSerializer):
         read_only_fields = QSARModelSerializer.Meta.read_only_fields
 
     def is_valid(self, raise_exception=True):
+        initial_data = self.initial_data
+        if "trainingStrategy" in initial_data and "embeddings" in initial_data["trainingStrategy"]:
+            embeddings = []
+            for emb in initial_data["trainingStrategy"]["embeddings"]:
+                if isinstance(emb, dict):
+                    eid, _ = EmbeddingCalculator.objects.get_or_create(**emb)
+                    embeddings.append(eid.id)
+                else:
+                    embeddings.append(emb)
+            initial_data["trainingStrategy"]["embeddings"] = embeddings
+
+        if "trainingStrategy" in initial_data and "validationStrategies" in initial_data["trainingStrategy"]:
+            validation_strategies = initial_data["trainingStrategy"]["validationStrategies"]
+            for vs in validation_strategies:
+                ds = vs["dataSplit"]
+                if isinstance(ds, dict):
+                    name = ds.pop("name")
+                    try:
+                        cls = getattr(models, name)
+                    except AttributeError:
+                        try:
+                            cls = getattr(genui_models, name)
+                        except AttributeError:
+                            raise serializers.ValidationError(f"Data split {name} not found.")
+                    if "scaffold" in ds:
+                        sid, _ = models.ScaffoldCalculator.objects.get_or_create(**ds["scaffold"])
+                        ds["scaffold"] = sid
+                    did, _ = cls.objects.get_or_create(**ds)
+                    vs["dataSplit"] = did.id
+                else:
+                    vs["dataSplit"] = ds
+            self.initial_data["trainingStrategy"]["validationStrategies"] = validation_strategies
+
         ret = super().is_valid(raise_exception=raise_exception)
         data = self.validated_data
         tr_strat_data = data['trainingStrategy']

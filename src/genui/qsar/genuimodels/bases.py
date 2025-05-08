@@ -24,7 +24,7 @@ class EmbeddingCalculator(ABC):
         return self.instance
 
     def get_default_parameters(self):
-        return get_default_params(self._module, self.name)
+        return get_default_params(self.name, self._module.__name__)
 
     @classmethod
     def getDjangoModel(cls, corePackage, update=False):
