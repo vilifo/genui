@@ -1,20 +1,19 @@
 import json
 import os
+import tarfile
+import tempfile
 
 from django.core.exceptions import ImproperlyConfigured
+from django.urls import reverse
 from qsprpred.models import SklearnModel
 from rest_framework.test import APITestCase
-from django.urls import reverse
-import tempfile
-import tarfile
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
-from genui.compounds.models import ActivityTypes, ActivityUnits
 from genui.compounds.extensions.chembl.tests import CompoundsMixIn
-from genui.qsar.models import QSARModel, EmbeddingCalculator, ScaffoldCalculator, ModelActivitySet, \
-    GBMTRandomSplit, ScaffoldSplit, ClusterSplit, FPSimilarityMaxMinClusters, FPSimilarityLeaderPickerClusters
+from genui.compounds.models import ActivityTypes, ActivityUnits
 from genui.models.models import ModelPerformance, Algorithm, AlgorithmMode, ModelFile, ModelPerformanceMetric, \
     BasicValidationStrategy, RandomSplit, ValueAggregationFunction
+from genui.qsar.models import QSARModel, ModelActivitySet
 from .genuimodels import builders
 
 
@@ -103,13 +102,13 @@ class QSARModelInit(CompoundsMixIn):
                 "algorithm": algorithm.id,
                 "parameters": parameters,
                 "mode": mode.id,
-                "embeddings": embeddings,  # TODO: calculator jako json
+                "embeddings": embeddings,
                 "activityThreshold": 6.5,
                 "activitySet": activitySet.id,
                 "activityType": activityType.id,
                 "validationStrategies": [{
                     "resourcetype": "BasicValidationStrategy",
-                    "dataSplit": dataSplit,  # TODO: datasplit jako json
+                    "dataSplit": dataSplit,
                     "cvFolds": 3,
                     "metrics": [
                         x.id for x in metrics
@@ -440,8 +439,8 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         self.predictWithModel(model, self.molset)
 
     def test_qsprpred_embedding_set(self):
-        sets = [{"name": "DrugExPhyschem"},
-                {"name": "RDKitDescs"}, ]
+        sets = [{"name": "DrugExPhyschem", "arguments": {"physchem_props": ["Aliphatic"]}},
+                {"name": "RDKitDescs", "arguments": {"rdkit_descriptors": ["NumSaturatedCarbocycles"]}}, ]
         model = self.createTestQSARModel(embeddings=sets)
 
         response = self.client.get(reverse('model-list'))

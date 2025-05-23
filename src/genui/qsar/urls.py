@@ -30,10 +30,11 @@ routes = [
     , path('models/<int:pk>/performance/', ModelPerformanceListView.as_view())
     , path('models/<int:pk>/files/', ModelFileView.as_view(model_class=QSARModel), name="qsar-model-files-list")
     , path('models/qsprpred/sklearn/', views.QSPRPredSklearnModelViewSet.as_view(({'get': 'list'})))
+    , path('models/qsprpred/sklearn/mode/<str:mode>/', views.QSPRPredSklearnModelViewSet.as_view(({'get': 'mode_model'})))
     , path('models/qsprpred/sklearn/<str:algorithm>/', views.QSPRPredSklearnModelViewSet.as_view(({'get': 'retrieve'})))
     , path('models/qsprpred/sklearn/<str:algorithm>/type/', views.QSPRPredSklearnModelViewSet.as_view(({'get': 'get_type'})))
     , path('models/qsprpred/sklearn/<str:algorithm>/params/', views.QSPRPredSklearnModelViewSet.as_view(({'get': 'get_params'})))
-    , path('embedding/<str:name>/params/', views.EmbeddingGroupsViewSet.as_view({'get': 'params_by_name'}))
+    # , path('embedding/<str:name>/params/', views.EmbeddingGroupsViewSet.as_view({'get': 'params_by_name'}))
     , path('data-split/<str:name>/params/', views.QSARDataSplitViewSet.as_view({'get': 'params_by_name'}))
 ]
 

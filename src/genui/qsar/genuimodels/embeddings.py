@@ -43,6 +43,7 @@ class AtomPairFP(Fingerprint):
     name = "AtomPairFP"
     abstract = False
 
+
 class RDKitFP(Fingerprint):
     name = "RDKitFP"
     abstract = False
@@ -63,15 +64,18 @@ class DescriptorSet(bases.EmbeddingCalculator):
     _module = importlib.import_module("qsprpred.data.descriptors.sets")
     abstract = True
 
-    def get_descriptors_names(self):
-        return getattr(self._module, self.name)().descriptors
-
 
 class DrugExPhyschem(DescriptorSet):
     name = "DrugExPhyschem"
     abstract = False
 
+    def get_default_parameters(self):
+        return {"physchem_props": getattr(self._module, self.name)().descriptors}
+
 
 class RDKitDescs(DescriptorSet):
     name = "RDKitDescs"
     abstract = False
+
+    def get_default_parameters(self):
+        return {"rdkit_descriptors": getattr(self._module, self.name)().descriptors}

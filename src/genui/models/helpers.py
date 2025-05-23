@@ -33,7 +33,7 @@ def discoverGenuiModels(container, core_package="genuimodels", modules=("algorit
 
                 for base in base_classes:
                     for x in getSubclassesFromModule(base, module):
-                        if x == base or (hasattr(x, "abstract") and x.abstract):
+                        if x == base or (hasattr(x, "abstract") and x.abstract) or hasattr(x, "no_init") and x.no_init:
                             continue
                         model = x.getDjangoModel(corePackage=f"{container}.{core_package}", update=True)
                         print(f"Django model instance initialized for '{model}' from module: '{module.__name__}'")

@@ -1,7 +1,7 @@
 from django.db import models
 from polymorphic.models import PolymorphicModel
 
-from genui.compounds.models import MolSet, ActivitySet, Activity, ActivityTypes, ActivityUnits, Molecule
+from genui.compounds.models import MolSet, ActivitySet, Activity, ActivityTypes, ActivityUnits
 from genui.models.models import Model, TrainingStrategy, DataSplit, ImportableModelComponent
 
 

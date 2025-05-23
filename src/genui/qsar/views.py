@@ -9,15 +9,17 @@ from rest_framework import serializers as rest_serializers
 
 from genui.models.models import AlgorithmMode
 from genui.models.views import ModelViewSet, AlgorithmViewSet, MetricsViewSet, PredictMixIn, DataSplitViewSet
-from genui.qsar.genuimodels.builders import BasicQSARModelBuilder
 from genui.models.genuimodels.bases import Algorithm
-from genui.qsar.genuimodels.bases import EmbeddingBuilderMixIn
+from genui.qsar.genuimodels.builders import BasicQSARModelBuilder
+from genui.qsar.genuimodels.bases import EmbeddingBuilderMixIn, EmbeddingCalculator
+from genui.qsar.genuimodels import embeddings
 from . import models
 from . import serializers
 from .tasks import buildQSARModel, predictWithQSARModel
 from genui.utils.extensions.tasks.utils import runTask
 from genui import celery_app
-from genui.utils.inspection import get_default_params, get_default_params_django, sklearn_regressors, sklearn_classifiers, SKLEARN_MODELS, SKLEARN_MODELS_PARAMS
+from genui.utils.inspection import get_default_params, get_default_params_django, sklearn_regressors, \
+    sklearn_classifiers, SKLEARN_MODELS, SKLEARN_MODELS_PARAMS, getSubclassesFromModule
 
 
 class QSARModelViewSet(PredictMixIn, ModelViewSet):
@@ -114,55 +116,43 @@ class EmbeddingGroupsViewSet(
     )
     @action(detail=False, methods=['get'], url_path='list')
     def list_all(self, request):
-        calculators = self.get_queryset().values_list('name', flat=True)
-        return Response(list(calculators))
+        calculators = getSubclassesFromModule(EmbeddingCalculator, embeddings)
+        calculators = [c.__name__ for c in calculators if not c.abstract]
+        return Response(calculators)
 
-    @swagger_auto_schema(
-        methods=['GET']
-        , responses={
-            200: "Default parameters for the embedding calculator",
-        }
-    )
-    @action(detail=True, methods=['get'])
-    def params(self, request, pk=None):
-        try:
-            instance = self.get_queryset().get(pk=pk)
-        except models.EmbeddingCalculator.DoesNotExist:
-            return Response({"error": f"Embedding calculator not found: {pk}"}, status=status.HTTP_404_NOT_FOUND)
+    # @swagger_auto_schema(
+    #     methods=['GET']
+    #     , responses={
+    #         200: "Default parameters for the embedding calculator",
+    #     }
+    # )
+    # @action(detail=True, methods=['get'])
+    # def params(self, request, pk=None):
+    #     try:
+    #         instance = self.get_queryset().get(pk=pk)
+    #     except models.EmbeddingCalculator.DoesNotExist:
+    #         return Response({"error": f"Embedding calculator not found: {pk}"}, status=status.HTTP_404_NOT_FOUND)
+    #
+    #     class_ = EmbeddingBuilderMixIn.findEmbeddingClass(instance.name, instance.corePackage)
+    #     if not class_:
+    #         return Response({"error": f"Embedding class not found for: {instance.name}"},
+    #                         status=status.HTTP_404_NOT_FOUND)
+    #
+    #     calculator = class_(None)
+    #     data = calculator.get_default_parameters()
+    #     if hasattr(calculator, "get_descriptors_names"):
+    #         data["descriptors"] = calculator.get_descriptors_names()
+    #     return Response(data)
 
-        class_ = EmbeddingBuilderMixIn.findEmbeddingClass(instance.name, instance.corePackage)
-        if not class_:
-            return Response({"error": f"Embedding class not found for: {instance.name}"},
-                            status=status.HTTP_404_NOT_FOUND)
-
-        calculator = class_(None)
-        data = calculator.get_default_parameters()
-        if hasattr(calculator, "get_descriptors_names"):
-            data["descriptors"] = calculator.get_descriptors_names()
-        return Response(data)
-
-    @swagger_auto_schema(
-        methods=['GET']
-        , responses={
-            200: "Default parameters for the embedding calculator",
-        }
-    )
-    @action(detail=False, methods=['get'], url_path='(?P<name>[^/.]+)/params')
+    @action(detail=False, methods=['get'], url_path='(?P<name>[^/.]+)/arguments')
     def params_by_name(self, request, name=None):
-        try:
-            instance = self.get_queryset().get(name=name)
-        except models.EmbeddingCalculator.DoesNotExist:
-            return Response({"error": f"Embedding calculator not found: {name}"}, status=status.HTTP_404_NOT_FOUND)
-
-        class_ = EmbeddingBuilderMixIn.findEmbeddingClass(instance.name, instance.corePackage)
+        class_ = EmbeddingBuilderMixIn.findEmbeddingClass(name)
         if not class_:
-            return Response({"error": f"Embedding class not found for: {instance.name}"},
+            return Response({"error": f"Embedding class not found for: {name}"},
                             status=status.HTTP_404_NOT_FOUND)
 
         calculator = class_(None)
         data = calculator.get_default_parameters()
-        if hasattr(calculator, "get_descriptors_names"):
-            data["descriptors"] = calculator.get_descriptors_names()
         return Response(data)
 
 
@@ -255,6 +245,17 @@ class QSPRPredSklearnModelViewSet(viewsets.ViewSet):
         serializer.is_valid(raise_exception=True)
         return Response(serializer.data)
 
+    def mode_model(self, request, mode):
+        if mode == "regression":
+            model_list = [name for name in sklearn_regressors]
+        elif mode == "classification":
+            model_list = [name for name in sklearn_classifiers]
+        else:
+            return Response({"error": f"Mode not found: {mode}"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = rest_serializers.ListSerializer(data=model_list, child=rest_serializers.CharField())
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.data)
+
     def retrieve(self, request, algorithm):
         data = []
         if algorithm in sklearn_regressors:
@@ -277,12 +278,8 @@ class QSPRPredSklearnModelViewSet(viewsets.ViewSet):
             return Response({"error": f"Algorithm not found: {algorithm}"}, status=status.HTTP_404_NOT_FOUND)
 
     def get_params(self, request, algorithm):
-        if algorithm in sklearn_regressors:
-            cls = sklearn_regressors[algorithm]
-            data = get_default_params(None, cls)
-        elif algorithm in sklearn_classifiers:
-            cls = sklearn_classifiers[algorithm]
-            data = get_default_params(None, cls)
+        if algorithm in SKLEARN_MODELS:
+            data = SKLEARN_MODELS_PARAMS[algorithm]
         else:
             return Response({"error": f"Algorithm not found: {algorithm}"}, status=status.HTTP_404_NOT_FOUND)
         return Response(data)

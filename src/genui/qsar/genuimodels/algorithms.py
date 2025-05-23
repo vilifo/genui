@@ -17,7 +17,7 @@ class QSPRPredScikitModel(Algorithm):
     parameters = {
         "alg": {
             "type": ModelParameter.STRING,
-            "defaultValue": "DummyClassifier"
+            "defaultValue": "RandomForestClassifier",
         },
         "parameters": {
             "type": ModelParameter.STRING,

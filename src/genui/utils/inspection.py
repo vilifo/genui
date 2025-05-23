@@ -4,7 +4,6 @@ inspection
 Created by: Martin Sicho
 On: 4/30/20, 8:55 AM
 """
-import pprint
 import sys
 import re
 import pkgutil
@@ -12,7 +11,9 @@ import importlib
 import inspect
 import sklearn
 from sklearn.base import RegressorMixin, ClassifierMixin
-from abc import ABC
+from sklearn.utils._param_validation import Interval, StrOptions
+from sklearn.metrics._dist_metrics import DistanceMetric
+import numpy as np
 from django.urls import path, include
 from django.db import models
 from genui import apps
@@ -204,15 +205,50 @@ def get_sklearn_models():
                 for name, obj in inspect.getmembers(module):
                     if inspect.isclass(obj) and obj.__module__ == module_name:
                         if not inspect.isabstract(obj) and not obj.__name__.startswith("_"):
-                            if issubclass(obj, RegressorMixin) and obj not in [RegressorMixin, ClassifierMixin]:
+                            if issubclass(obj, RegressorMixin):
                                 regressors[name] = f"{module_name}.{name}"
-                            elif issubclass(obj, ClassifierMixin) and obj not in [RegressorMixin, ClassifierMixin]:
+                            elif issubclass(obj, ClassifierMixin):
                                 classifiers[name] = f"{module_name}.{name}"
-        except Exception:
+        except Exception as e:
             pass
 
     return regressors, classifiers
 
+def parse_interval(constraint):
+    constraint = str(constraint)
+    type_ = "int" if "int" in constraint else "float" if "float" in constraint else None
+    if type_ is None:
+        return None
+    range_str = " ".join(constraint.rsplit(" ", 2)[1:])
+    lb = range_str[0]
+    rb = range_str[-1]
+    range_str = range_str[1:-1]
+    l, r = range_str.split(",")
+    l = l.strip()
+    r = r.strip()
+    l = True if l == "-inf" else l
+    r = True if r == "inf" else r
+    lb = "<=" if lb == "[" else "<"
+    rb = "<=" if rb == "]" else "<"
+    l = "" if l == True else " ".join([l, lb, "x"])
+    r = "" if r == True else " ".join(["x", rb, r])
+    return {type_: " ".join([l, "" if (l == "" and r == "") else "&&", r]).strip()}
+
+def _constraint_processor(constraint):
+    if type(constraint) == Interval:
+        return parse_interval(constraint)
+    elif type(constraint) == StrOptions:
+        return {"str": [o for o in constraint.options]}
+    elif inspect.isclass(constraint) and issubclass(constraint, DistanceMetric):
+        return {"str": ["euclidean", "manhattan", "chebyshev'"]}
+    elif constraint == "boolean" or (inspect.isclass(constraint) and (issubclass(constraint, bool) or issubclass(constraint, np.bool_))):
+        return "bool"
+    elif inspect.isclass(constraint) and (issubclass(constraint, list) or issubclass(constraint, dict)):
+        return None
+    else:
+        return None
+
+DISCARDED_PARAMS = ["self", "random_state", "verbose", "n_jobs", ]
 
 def get_sklearn_params_with_constraints(module_name, class_=None):
     if class_ is None:
@@ -227,18 +263,18 @@ def get_sklearn_params_with_constraints(module_name, class_=None):
 
     params = {}
     for param_name, param in signature.parameters.items():
-        if param_name == "self":
+        if param_name in DISCARDED_PARAMS:
             continue
         default = None if param.default is inspect.Parameter.empty else param.default
         constraint = constraints.get(param_name, None)
 
         if constraint is not None:
-            constraint = [str(c) for c in constraint] # TODO: pokud je vyber ze stringu vratit list, získat možné typy
+            constraint = [_constraint_processor(c) for c in constraint if c is not None]
+            constraint = [c for c in constraint if c is not None and c != False]
 
         params[param_name] = {
             "default": default,
             "constraints": constraint,
-            # "type": type_
         }
 
     return params
@@ -247,7 +283,6 @@ def get_sklearn_params_with_constraints(module_name, class_=None):
 sklearn_regressors, sklearn_classifiers = get_sklearn_models()
 SKLEARN_MODELS = sklearn_regressors | sklearn_classifiers
 SKLEARN_MODELS_PARAMS = {k: get_sklearn_params_with_constraints(v) for k, v in SKLEARN_MODELS.items()}
-# pprint.pprint(SKLEARN_MODELS_PARAMS)
 
 
 def get_default_params(class_=None, module_name=None):

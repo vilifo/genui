@@ -12,6 +12,7 @@ from genui.utils.inspection import get_default_params
 
 class EmbeddingCalculator(ABC):
     name = None
+    no_init = True
     _module = None
     _model = models.EmbeddingCalculator
 
@@ -24,7 +25,10 @@ class EmbeddingCalculator(ABC):
         return self.instance
 
     def get_default_parameters(self):
-        return get_default_params(self.name, self._module.__name__)
+        params =  get_default_params(self.name, self._module.__name__)
+        if "kwargs" in params:
+            params.pop("kwargs")
+        return params
 
     @classmethod
     def getDjangoModel(cls, corePackage, update=False):
@@ -53,7 +57,7 @@ class ScaffoldCalculator(EmbeddingCalculator):
 class EmbeddingBuilderMixIn:
 
     @staticmethod
-    def findEmbeddingClass(name, corePackage, subtype="embeddings"):
+    def findEmbeddingClass(name, corePackage="genui.qsar.genuimodels", subtype="embeddings"):
         module = importFromPackage(corePackage, subtype)
         return findSubclassByID(EmbeddingCalculator, module, "name", name)
 
