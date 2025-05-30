@@ -72,13 +72,13 @@ class TemporalSplit(DataSplit):
 
 class GBMTDataSplit(DataSplit):
     clustering = models.ForeignKey(MoleculeClusters, null=False, on_delete=models.CASCADE)
-    testFraction = models.FloatField(blank=True, null=True)  # mutually exclusive with nFolds
+    testFraction = models.FloatField(blank=True, null=True, default=0.8)  # mutually exclusive with nFolds
     # nFolds = models.IntegerField(blank=True, null=True)  # mutually exclusive with testFraction
 
 
 class GBMTRandomSplit(GBMTDataSplit):
     seed = models.IntegerField(blank=True, default=42)
-    nInitialClusters = models.IntegerField(blank=True, null=True)
+    nInitialClusters = models.IntegerField(blank=True, null=True, default=2)
 
     def save(self, *args, **kwargs):
         self.clustering = RandomClusters.objects.create(seed=self.seed, nClusters=self.nInitialClusters)

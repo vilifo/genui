@@ -307,13 +307,13 @@ class DataSplit(PolymorphicModel):
 
 
 class RandomSplit(DataSplit):
-    testFraction = models.FloatField(blank=False)
+    testFraction = models.FloatField(blank=False, default=0.8)
     seed = models.IntegerField(blank=True, default=42)
 
 
 class BootstrapSplit(DataSplit):
     split = models.ForeignKey(DataSplit, null=False, on_delete=models.CASCADE, related_name="bootstrappedSplits")
-    nBootstraps = models.IntegerField(blank=False)
+    nBootstraps = models.IntegerField(blank=False, default=10)
     seed = models.IntegerField(blank=True, default=42)
 
 

@@ -226,23 +226,23 @@ def parse_interval(constraint):
     l, r = range_str.split(",")
     l = l.strip()
     r = r.strip()
-    l = True if l == "-inf" else l
-    r = True if r == "inf" else r
-    lb = "<=" if lb == "[" else "<"
-    rb = "<=" if rb == "]" else "<"
-    l = "" if l == True else " ".join([l, lb, "x"])
-    r = "" if r == True else " ".join(["x", rb, r])
-    return {type_: " ".join([l, "" if (l == "" and r == "") else "&&", r]).strip()}
+    interval = {}
+    if l != "-inf": interval["min"] = float(l)
+    if r != "inf": interval["max"] = float(r)
+    if "min" in interval: interval["leq"] = "bq" if lb == "[" else "b"
+    if "max" in interval: interval["req"] = "sq" if rb == "]" else "s"
+    value =  {"type":type_, "interval": interval}
+    return value
 
 def _constraint_processor(constraint):
     if type(constraint) == Interval:
         return parse_interval(constraint)
     elif type(constraint) == StrOptions:
-        return {"str": [o for o in constraint.options]}
+        return {"type":"str", "choices": [o for o in constraint.options]}
     elif inspect.isclass(constraint) and issubclass(constraint, DistanceMetric):
-        return {"str": ["euclidean", "manhattan", "chebyshev'"]}
+        return {"type": "str", "choices": ["euclidean", "manhattan", "chebyshev'"]}
     elif constraint == "boolean" or (inspect.isclass(constraint) and (issubclass(constraint, bool) or issubclass(constraint, np.bool_))):
-        return "bool"
+        return {"type":"bool"}
     elif inspect.isclass(constraint) and (issubclass(constraint, list) or issubclass(constraint, dict)):
         return None
     else:
@@ -271,10 +271,21 @@ def get_sklearn_params_with_constraints(module_name, class_=None):
         if constraint is not None:
             constraint = [_constraint_processor(c) for c in constraint if c is not None]
             constraint = [c for c in constraint if c is not None and c != False]
+            constraint = constraint[0] if len(constraint) > 0 else None
+
+        if default is None and constraint is not None:
+            c = constraint
+            ctype = c["type"]
+            if ctype == "int" or ctype == "float":
+                default = c["interval"]["min"] if c["interval"]["leq"] != "b" else c["interval"]["min"] + 0.001
+            elif ctype == "str":
+                default = c["choices"][0]
+            elif ctype == "bool":
+                default = False
 
         params[param_name] = {
-            "default": default,
-            "constraints": constraint,
+            "value": default,
+            "constraint": constraint,
         }
 
     return params
@@ -324,7 +335,7 @@ def get_default_params_django(class_=None, module_name=None):
             field_type = field.get_internal_type()
             field_type = django_field2python.get(field_type, field_type)
             default_value = field.default if field.default != models.NOT_PROVIDED else None
-            parameters[field.name] = (field_type, default_value)
+            parameters[field.name] = {"type":field_type, "value":default_value}
     return parameters
 
 
