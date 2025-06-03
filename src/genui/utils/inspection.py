@@ -271,6 +271,8 @@ def get_sklearn_params_with_constraints(module_name, class_=None):
         if constraint is not None:
             constraint = [_constraint_processor(c) for c in constraint if c is not None]
             constraint = [c for c in constraint if c is not None and c != False]
+            if isinstance(default, str):
+                constraint = [c for c in constraint if c["type"] == "str"]
             constraint = constraint[0] if len(constraint) > 0 else None
 
         if default is None and constraint is not None:
