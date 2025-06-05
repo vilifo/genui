@@ -7,8 +7,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers as rest_serializers
 
-from genui.models.models import AlgorithmMode
-from genui.models.views import ModelViewSet, AlgorithmViewSet, MetricsViewSet, PredictMixIn, DataSplitViewSet
+from genui.models import models as genui_models
+from genui.models.serializers import HyperparameterOptimizationStrategySerializer
+from genui.models.views import ModelViewSet, AlgorithmViewSet, MetricsViewSet, PredictMixIn, DataSplitViewSet, AggregationFunctionViewSet
 from genui.models.genuimodels.bases import Algorithm
 from genui.qsar.genuimodels.builders import BasicQSARModelBuilder
 from genui.qsar.genuimodels.bases import EmbeddingBuilderMixIn, EmbeddingCalculator
@@ -164,7 +165,6 @@ class QSARAlgorithmViewSet(AlgorithmViewSet):
 
 
 class QSARDataSplitViewSet(DataSplitViewSet):
-
     @swagger_auto_schema(
         methods=['GET']
         , responses={
@@ -176,7 +176,6 @@ class QSARDataSplitViewSet(DataSplitViewSet):
         from django.contrib.contenttypes.models import ContentType
         from genui.models.models import DataSplit
 
-        # Get all subclasses of DataSplit
         datasplit_types = []
         for ct in ContentType.objects.filter(app_label__in=['models', 'qsar']):
             model_class = ct.model_class()
@@ -231,8 +230,14 @@ class QSARMetricsViewSet(MetricsViewSet):
 
     def get_queryset(self):
         ret = super().get_queryset()
-        modes = AlgorithmMode.objects.filter(name__in=(Algorithm.CLASSIFICATION, Algorithm.REGRESSION))
+        modes = genui_models.AlgorithmMode.objects.filter(name__in=(Algorithm.CLASSIFICATION, Algorithm.REGRESSION))
         return ret.filter(validModes__in=modes)
+
+
+class QSARAggregationFunctionViewSet(AggregationFunctionViewSet):
+    def get_queryset(self):
+        ret = super().get_queryset()
+        return ret
 
 
 class QSPRPredSklearnModelViewSet(viewsets.ViewSet):
@@ -283,3 +288,59 @@ class QSPRPredSklearnModelViewSet(viewsets.ViewSet):
         else:
             return Response({"error": f"Algorithm not found: {algorithm}"}, status=status.HTTP_404_NOT_FOUND)
         return Response(data)
+
+
+class QSARHyperParameterOptimizationViewSet(viewsets.ViewSet):
+    queryset = genui_models.HyperparameterOptimizationStrategy.objects.all()
+    serializer_class = HyperparameterOptimizationStrategySerializer
+
+    @swagger_auto_schema(
+        methods=['GET']
+        , responses={
+            200: "List of all available hyperparameter optimization strategies",
+        }
+    )
+    @action(detail=False, methods=['get'], url_path='list')
+    def list_all(self, request):
+        from django.contrib.contenttypes.models import ContentType
+        from genui.models.models import HyperparameterOptimizationStrategy
+
+        hyperparam_strats = []
+        for ct in ContentType.objects.filter(app_label__in=['models']):
+            model_class = ct.model_class()
+            if model_class and issubclass(model_class,
+                                          HyperparameterOptimizationStrategy) and model_class != HyperparameterOptimizationStrategy:
+                hyperparam_strats.append(model_class.__name__)
+
+        return Response(hyperparam_strats)
+
+    @swagger_auto_schema(
+        methods=['GET']
+        , responses={
+            200: "Default parameters for the hyperparameter optimization strategy",
+        }
+    )
+    @action(detail=False, methods=['get'], url_path='(?P<name>[^/.]+)/params')
+    def params_by_name(self, request, name=None):
+        from django.contrib.contenttypes.models import ContentType
+        from genui.models.models import HyperparameterOptimizationStrategy
+
+        model_class = None
+        for ct in ContentType.objects.filter(app_label__in=['models']):
+            cls = ct.model_class()
+            if cls and issubclass(cls, HyperparameterOptimizationStrategy) and cls.__name__ == name:
+                model_class = cls
+                break
+
+        if not model_class:
+            return Response({"error": f"Hyperparameter optimization strategy not found: {name}"},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            module_name = model_class.__module__
+            class_name = model_class.__name__
+            params = get_default_params_django(class_name, module_name)
+            return Response(params)
+        except Exception as e:
+            return Response({"error": f"Failed to get parameters: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)

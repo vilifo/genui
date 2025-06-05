@@ -31,7 +31,7 @@ class ScaffoldCalculatorSerializer(EmbeddingCalculatorSerializer):
 
 
 class QSARTrainingStrategySerializer(TrainingStrategySerializer):
-    embeddings = EmbeddingCalculatorSerializer(many=True)
+    embeddings = EmbeddingCalculatorSerializer(many=True, required=False)
     activityType = ActivityTypeSerializer(many=False)
     activitySet = ActivitySetSerializer(many=False)
 
@@ -43,7 +43,7 @@ class QSARTrainingStrategySerializer(TrainingStrategySerializer):
 
 class QSARTrainingStrategyInitSerializer(TrainingStrategyInitSerializer):
     embeddings = serializers.PrimaryKeyRelatedField(many=True, queryset=models.EmbeddingCalculator.objects.all(),
-                                                    allow_empty=False)
+                                                    allow_empty=True, required=False)
     activityType = serializers.PrimaryKeyRelatedField(many=False, queryset=ActivityTypes.objects.all(), required=False)
     activitySet = serializers.PrimaryKeyRelatedField(many=False, queryset=ActivitySet.objects.all(), required=False)
 
@@ -175,7 +175,8 @@ class QSARModelInitSerializer(QSARModelSerializer):
             activityType=strat_data['activityType'] if 'activityType' in strat_data else None
         )
         trainingStrategy.save()
-        trainingStrategy.embeddings.set(strat_data['embeddings'])
+        if 'embeddings' in strat_data and strat_data['embeddings']:
+            trainingStrategy.embeddings.set(strat_data['embeddings'])
         trainingStrategy.save()
 
         self.saveParameters(trainingStrategy, strat_data)

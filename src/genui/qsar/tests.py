@@ -157,7 +157,7 @@ class QSARModelInit(CompoundsMixIn):
 
         return instance
 
-    def uploadModel(self, filePath, algorithm, mode, embeddings, predictionsType, predictionsUnits, parameters):
+    def uploadModel(self, filePath, algorithm, mode, predictionsType, predictionsUnits):
         """
         Upload a pre-trained model file and create a corresponding QSAR model.
 
@@ -165,7 +165,6 @@ class QSARModelInit(CompoundsMixIn):
             filePath (str): Path to the model file.
             algorithm (Algorithm): The algorithm used in the model.
             mode (AlgorithmMode): The mode of the algorithm.
-            embeddings (list): List of embeddings used in the model.
             predictionsType (str): Type of predictions the model makes.
             predictionsUnits (str): Units of the predictions.
 
@@ -184,8 +183,6 @@ class QSARModelInit(CompoundsMixIn):
             "trainingStrategy": {
                 "algorithm": algorithm.id,
                 "mode": mode.id,
-                "embeddings": embeddings,
-                "parameters": parameters,
             },
         }
         response = self.client.post(create_url, data=post_data, format='json')
@@ -254,12 +251,8 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             instance_first.modelFile.path,
             instance_first.trainingStrategy.algorithm,
             instance_first.trainingStrategy.mode,
-            [{"name": "MorganFP", "arguments": {"radius": 2, "nBits": 2048}}],
             instance_first.predictionsType.value,
             instance_first.predictionsUnits.value if instance_first.predictionsUnits else None,
-            {"alg": "RandomForestClassifier",
-             "parameters": json.dumps({"n_estimators": 150, })
-             }
         )
 
         builder = builders.BasicQSARModelBuilder(instance)
@@ -301,12 +294,8 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             model.modelFile.path,
             model.trainingStrategy.algorithm,
             model.trainingStrategy.mode,
-            [{"name": "MorganFP", "arguments": {"radius": 2, "nBits": 2048}}],
             model.predictionsType.value,
             model.predictionsUnits.value if model.predictionsUnits else None,
-            {"alg": "RandomForestRegressor",
-             "parameters": json.dumps({"n_estimators": 150, })
-             }
         )
         builder = builders.BasicQSARModelBuilder(model_from_file)
         print(builder.predictMols(["CC", "CCO"]))
@@ -507,13 +496,8 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             model_path,
             Algorithm.objects.get_or_create(name="QSPRPredScikitModel")[0],
             AlgorithmMode.objects.get(name="classification"),
-            [
-                {"name": "MorganFP", "arguments": {"radius": 3, "nBits": 2048}}],
             'Active Probability',
             None,
-            {"alg": "RandomForestClassifier",
-             "parameters": json.dumps({"n_estimators": 150, })
-             }
         )
         self.predictWithModel(instance, self.molset)
 

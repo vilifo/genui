@@ -284,11 +284,11 @@ def get_sklearn_params_with_constraints(module_name, class_=None):
                 default = c["choices"][0]
             elif ctype == "bool":
                 default = False
-
-        params[param_name] = {
-            "value": default,
-            "constraint": constraint,
-        }
+        if constraint is not None:
+            params[param_name] = {
+                "value": default,
+                "constraint": constraint,
+            }
 
     return params
 
@@ -313,7 +313,7 @@ def get_default_params(class_=None, module_name=None):
             params[param_name] = param.default
     return params
 
-
+DISCARD_NAMES = ["polymorphic_ctype", "trainingStrategy"]
 def get_default_params_django(class_=None, module_name=None):
     django_field2python = {
         "CharField": "str",
@@ -331,13 +331,14 @@ def get_default_params_django(class_=None, module_name=None):
     model_class = getattr(module, class_)
     parameters = {}
     for field in model_class._meta.get_fields():
-        if isinstance(field, models.Field) and not field.auto_created and not isinstance(field, (models.ForeignKey,
-                                                                                                 models.OneToOneField,
-                                                                                                 models.ManyToManyField)):
+        if isinstance(field, models.Field) and not field.auto_created: #and not isinstance(field, (models.ForeignKey,
+                                                                                                 # models.OneToOneField,
+                                                                                                 # models.ManyToManyField)):
             field_type = field.get_internal_type()
             field_type = django_field2python.get(field_type, field_type)
             default_value = field.default if field.default != models.NOT_PROVIDED else None
-            parameters[field.name] = {"type":field_type, "value":default_value}
+            if field.name not in DISCARD_NAMES:
+                parameters[field.name] = {"type":field_type, "value":default_value}
     return parameters
 
 

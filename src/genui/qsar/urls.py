@@ -21,6 +21,8 @@ router.register(r'algorithms',views.QSARAlgorithmViewSet, basename='algorithm')
 router.register(r'metrics', views.QSARMetricsViewSet, basename='metric')
 router.register(r'embeddings', views.EmbeddingGroupsViewSet, basename='embedding')
 router.register(r"data-splits", views.QSARDataSplitViewSet, basename='data-split')
+router.register(r'hyper-parameters', views.QSARHyperParameterOptimizationViewSet, basename='hyper-parameter')
+router.register(r'aggregation-functions', views.QSARAggregationFunctionViewSet, basename='aggregation-function')
 # router.register(r'predictions', views.ModelPredictionsViewSet, basename='prediction')
 
 
@@ -34,8 +36,6 @@ routes = [
     , path('models/qsprpred/sklearn/<str:algorithm>/', views.QSPRPredSklearnModelViewSet.as_view(({'get': 'retrieve'})))
     , path('models/qsprpred/sklearn/<str:algorithm>/type/', views.QSPRPredSklearnModelViewSet.as_view(({'get': 'get_type'})))
     , path('models/qsprpred/sklearn/<str:algorithm>/params/', views.QSPRPredSklearnModelViewSet.as_view(({'get': 'get_params'})))
-    # , path('embedding/<str:name>/params/', views.EmbeddingGroupsViewSet.as_view({'get': 'params_by_name'}))
-    , path('data-split/<str:name>/params/', views.QSARDataSplitViewSet.as_view({'get': 'params_by_name'}))
 ]
 
 urlpatterns = [
