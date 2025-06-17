@@ -156,7 +156,6 @@ class QSARModelInitSerializer(QSARModelSerializer):
         return ret
 
     def create(self, validated_data, **kwargs):
-        super().create(validated_data, **kwargs)
         validation_strategies_data = validated_data['trainingStrategy'].pop('validationStrategies', [])
         hypo_data = validated_data['trainingStrategy'].pop('hyperParamOptStrategies', None)
         instance = super().create(
