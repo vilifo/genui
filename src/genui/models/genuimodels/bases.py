@@ -243,6 +243,7 @@ class ValidationMetric(ABC):
             self,
             true_vals: Series,
             predicted_vals: Series,
+            validation_index,
             perfClass=models.ModelPerformance,
             **kwargs
     ):
@@ -250,6 +251,7 @@ class ValidationMetric(ABC):
             metric=models.ModelPerformanceMetric.objects.get(name=self.name),
             value=self(true_vals, predicted_vals),
             model=self.builder.instance,
+            validationIndex=validation_index,
             **kwargs
         )
 

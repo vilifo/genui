@@ -74,9 +74,14 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
                                                core_models.ModelPerformanceCV)
         self._model = self.algorithmClass(self)
 
-        for validation in self.validations:
+        for validation_strategy_index, validation in enumerate(self.validations):
+            monitor.validation_index = validation_strategy_index
             if hasattr(validation, 'dataSplit') and hasattr(validation, 'cvFolds'):
+                split_instance = self._init_split(validation)
+                dataset.split(split_instance)
+
                 if self.hyper_param_opt:
+                    monitor.validation_index = -20
                     optimizer_class = getattr(qsprpred_models, self.hyper_param_opt.__class__.__name__)
                     kwargs = {"param_grid": self.hyper_param_opt.searchSpace,
                               "model_assessor": CrossValAssessor(self.hypo_metric(self)),
@@ -88,9 +93,7 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
                     old_params = json.loads(self.model.params['parameters'])
                     old_params.update(**params)
                     self.model.params["parameters"] = json.dumps(old_params)
-
-                split_instance = self._init_split(validation)
-                dataset.split(split_instance)
+                    monitor.validation_index = validation_strategy_index
 
                 # Perform cross-validation
                 is_regression = self.training.mode.name == Algorithm.REGRESSION
@@ -105,6 +108,7 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
                 cva(self.model.model, dataset, False, )
 
         monitor.on_assessment_start = True
+        monitor.validation_index = -1 # Test set performance
         metrics_aggregator.perfClass = core_models.ModelPerformance
         tsa = TestSetAssessor(metrics_aggregator,
                               monitor,
@@ -117,7 +121,7 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
         # Final validation (optional, as it's not truly a validation)
         y_predicted = self.model.predict(dataset.X)
         # for validation in self.validations:
-        self.validate(dataset.y, y_predicted)
+        self.validate(dataset.y, y_predicted, validationIndex=-10)  # Not a validation
 
         self.recordProgress()
         self.saveFile()
@@ -195,10 +199,10 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
     #     for validation in self.validations:
     #         self.validate(validation, y_valid, y_predicted, perfClass, *args, **kwargs)
 
-    def validate(self, y_validated, y_predicted, perfClass=core_models.ModelPerformance, *args, **kwargs):
+    def validate(self, y_validated, y_predicted, perfClass=core_models.ModelPerformance, validationIndex=-1, *args, **kwargs):
         for metric_class in self.metricClasses:
             try:
-                metric_class(self).save(y_validated, y_predicted, perfClass, *args, **kwargs)
+                metric_class(self).save(y_validated, y_predicted, validationIndex, perfClass, *args, **kwargs)
             except Exception as exp:
                 print("Failed to obtain values for metric: ", metric_class.name)
                 self.errors.append(exp)

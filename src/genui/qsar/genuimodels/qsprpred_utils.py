@@ -5,13 +5,23 @@ from genui.models import models
 from genui.models.genuimodels.bases import Algorithm
 import re
 
+
 def private_state(state):
     return f"_{state}"
 
 
 class RecordProgressMonitor(BaseMonitor):
+    @property
+    def validation_index(self):
+        return self._validation_index
+
+    @validation_index.setter
+    def validation_index(self, value):
+        self._validation_index = value
+
     def __init__(self, progress_callback=None):
         super().__init__()
+        self._validation_index = 0
         states = [camel_to_snake(name) for name in dir(self.__class__) if re.match(r"^on[A-Z]", name)]
         for state in states:
             setattr(self, snake_to_camel(state), self._update_callback_method(state))
@@ -55,7 +65,8 @@ class MetricsAggregator:
 
         for metric_class in self.metricClasses:
             try:
-                metric_class(self.builder).save(y_true, y_pred, self.perfClass, **kwargs)
+                metric_class(self.builder).save(y_true, y_pred, self.monitor.validation_index,
+                                                self.perfClass, **kwargs)
             except Exception as exp:
                 print("Failed to obtain values for metric: ", metric_class.name)
                 self.builder.errors.append(exp)

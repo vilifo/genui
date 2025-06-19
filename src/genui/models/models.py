@@ -362,6 +362,7 @@ class ModelPerformance(PolymorphicModel):
     metric = models.ForeignKey(ModelPerformanceMetric, null=False, on_delete=models.CASCADE)
     value = models.FloatField(blank=False)
     model = models.ForeignKey(Model, null=False, on_delete=NON_POLYMORPHIC_CASCADE, related_name="performance")
+    validationIndex = models.IntegerField(blank=False)
 
 
 class ModelPerformanceCV(ModelPerformance):
