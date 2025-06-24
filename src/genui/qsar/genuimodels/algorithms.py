@@ -50,7 +50,7 @@ class QSPRPredScikitModel(Algorithm):
 
     @property
     def model_name(self):
-        return f"{self.name}_{self.params["alg"]}"
+        return f"{self.name}_{self.params['alg']}"
 
     def fit(self, X: DataFrame, y: Series):
         self._init_model()

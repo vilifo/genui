@@ -243,7 +243,6 @@ class ValidationMetric(ABC):
             self,
             true_vals: Series,
             predicted_vals: Series,
-            validation_index,
             perfClass=models.ModelPerformance,
             **kwargs
     ):
@@ -251,7 +250,6 @@ class ValidationMetric(ABC):
             metric=models.ModelPerformanceMetric.objects.get(name=self.name),
             value=self(true_vals, predicted_vals),
             model=self.builder.instance,
-            validationIndex=validation_index,
             **kwargs
         )
 
@@ -361,7 +359,7 @@ class ModelBuilder(ABC):
         self.hyper_param_opt = self.training.hyperParamOptStrategies.first()
         self.metricClasses = []
         for validation in self.validations:
-            self.metricClasses.extend(
+            self.metricClasses.append(
                 [self.findMetricClass(x.name, x.corePackage) for x in validation.metrics.all() if x])
         if self.hyper_param_opt:
             aggregation = self.hyper_param_opt.scoreAggregation.name

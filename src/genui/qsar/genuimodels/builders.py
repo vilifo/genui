@@ -24,6 +24,7 @@ from sklearn.model_selection import KFold, StratifiedKFold
 from django.core.exceptions import ImproperlyConfigured
 from genui.compounds.models import Molecule
 from genui.utils.inspection import snake_to_camel, get_default_params
+
 from .qsprpred_utils import RecordProgressMonitor, MetricsAggregator
 from genui.compounds.models import ActivityTypes, ActivitySet
 from genui.models import models as core_models
@@ -70,7 +71,7 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
         monitor = RecordProgressMonitor(self.recordProgress)
         monitor.on_fold_start = True
         monitor.on_optimization_start = True
-        metrics_aggregator = MetricsAggregator(self.metricClasses[0], [m for m in self.metricClasses], self, monitor,
+        metrics_aggregator = MetricsAggregator(self.metricClasses[0][0], [m for m in self.metricClasses], self, monitor,
                                                core_models.ModelPerformanceCV)
         self._model = self.algorithmClass(self)
 
@@ -81,7 +82,7 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
                 dataset.split(split_instance)
 
                 if self.hyper_param_opt:
-                    monitor.validation_index = -20
+                    metrics_aggregator.perfClass = core_models.HyperparameterOptimizationPerformance
                     optimizer_class = getattr(qsprpred_models, self.hyper_param_opt.__class__.__name__)
                     kwargs = {"param_grid": self.hyper_param_opt.searchSpace,
                               "model_assessor": CrossValAssessor(self.hypo_metric(self)),
@@ -93,7 +94,7 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
                     old_params = json.loads(self.model.params['parameters'])
                     old_params.update(**params)
                     self.model.params["parameters"] = json.dumps(old_params)
-                    monitor.validation_index = validation_strategy_index
+                    metrics_aggregator.perfClass = core_models.ModelPerformanceCV
 
                 # Perform cross-validation
                 is_regression = self.training.mode.name == Algorithm.REGRESSION
@@ -121,7 +122,7 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
         # Final validation (optional, as it's not truly a validation)
         y_predicted = self.model.predict(dataset.X)
         # for validation in self.validations:
-        self.validate(dataset.y, y_predicted, validationIndex=-10)  # Not a validation
+        self.validate(dataset.y, y_predicted)  # Not a validation
 
         self.recordProgress()
         self.saveFile()
@@ -199,10 +200,12 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
     #     for validation in self.validations:
     #         self.validate(validation, y_valid, y_predicted, perfClass, *args, **kwargs)
 
-    def validate(self, y_validated, y_predicted, perfClass=core_models.ModelPerformance, validationIndex=-1, *args, **kwargs):
-        for metric_class in self.metricClasses:
+    def validate(self, y_validated, y_predicted, perfClass=core_models.ModelPerformance, *args, **kwargs):
+        metric_classes = set(self.metricClasses) if not isinstance(self.metricClasses[0], list) \
+            else set([mc for mcs in self.metricClasses for mc in mcs])
+        for metric_class in metric_classes:
             try:
-                metric_class(self).save(y_validated, y_predicted, validationIndex, perfClass, *args, **kwargs)
+                metric_class(self).save(y_validated, y_predicted, perfClass, *args, **kwargs)
             except Exception as exp:
                 print("Failed to obtain values for metric: ", metric_class.name)
                 self.errors.append(exp)

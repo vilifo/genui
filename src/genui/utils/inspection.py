@@ -194,17 +194,17 @@ def get_non_abstract_classes_from_module(module):
 def get_sklearn_models():
     regressors = {}
     classifiers = {}
-    omit_modules = {"ensemble", "gaussian_process", "kernel_ridge", "linear_model", "neighbors", "neural_network",
+    search_modules = {"ensemble", "gaussian_process", "kernel_ridge", "linear_model", "neighbors", "neural_network",
                     "svm", "tree"}
 
     for _, module_name, _ in pkgutil.walk_packages(sklearn.__path__, prefix="sklearn."):
         try:
-            if set(module_name.split(".")) & omit_modules:
+            if set(module_name.split(".")) & search_modules:
                 module = importlib.import_module(module_name)
 
                 for name, obj in inspect.getmembers(module):
                     if inspect.isclass(obj) and obj.__module__ == module_name:
-                        if not inspect.isabstract(obj) and not obj.__name__.startswith("_"):
+                        if not inspect.isabstract(obj) and not obj.__name__.startswith("_") and not "CV" in name:
                             if issubclass(obj, RegressorMixin):
                                 regressors[name] = f"{module_name}.{name}"
                             elif issubclass(obj, ClassifierMixin):

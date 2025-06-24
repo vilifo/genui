@@ -49,6 +49,7 @@ class QSARModelInit(CompoundsMixIn):
             dataSplit=None,
             hyperParamOptStrategies=None,
             correct=True,
+            validationStrategies=None,
     ):
         """
         Create a test QSAR model with specified parameters.
@@ -113,7 +114,7 @@ class QSARModelInit(CompoundsMixIn):
                     "metrics": [
                         x.id for x in metrics
                     ]
-                }],
+                }] if not validationStrategies else validationStrategies,
                 "hyperParamOptStrategies": hyperParamOptStrategies
             }
         }
@@ -525,3 +526,51 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         ]
         for s in splits:
             self.createTestQSARModel(dataSplit=s)
+
+    def test_multiple_validation_strategies_truly(self):
+        validation_strategies = [
+            {
+                "resourcetype": "BasicValidationStrategy",
+                "dataSplit": {"name": "RandomSplit",
+                         "testFraction": 0.2,
+                         "seed": 42,
+                         },
+                "cvFolds": 3,
+                "metrics": [
+                    ModelPerformanceMetric.objects.get(name="MCC").id,
+                    ModelPerformanceMetric.objects.get(name="ROC").id
+                ]
+            },
+            {
+                "resourcetype": "BasicValidationStrategy",
+                "dataSplit": {"name": "RandomSplit",
+                         "testFraction": 0.25,
+                         "seed": 111,
+                         },
+                "cvFolds": 5,
+                "metrics": [
+                    ModelPerformanceMetric.objects.get(name="MCC").id,
+                    ModelPerformanceMetric.objects.get(name="ROC").id,
+                    ModelPerformanceMetric.objects.get(name="Accuracy").id,
+                ]
+            }
+        ]
+        model = self.createTestQSARModel(validationStrategies=validation_strategies)
+
+    def test_all_parameters_default_value(self): # GUI creates a problem with default values, Here's an example
+        model = self.createTestQSARModel(
+            parameters={"alg": "RandomForestClassifier",
+                        "parameters": json.dumps({"n_estimators": 100,
+                                                  "criterion": "gini",
+                                                  "max_depth": 1,
+                                                  "min_samples_split": 2,
+                                                  "min_weight_fraction_leaf": 0.0,
+                                                  "max_features": "sqrt",
+                                                  "min_impurity_decrease": 0,
+                                                  "bootstrap": True,
+                                                  "oob_score": True,
+                                                  "warm_start": True,
+                                                  "class_weight": "balanced",
+                                                  "ccp_alpha": 0.0,
+                                                  "max_samples": 0.001})
+                        },)

@@ -26,11 +26,10 @@ class ROC(bases.ValidationMetric):
             self,
             true_vals: Series,
             predicted_vals: Series,
-            validation_index,
             perfClass=models.ModelPerformance,
             **kwargs
     ):
-        roc_auc = super().save(true_vals, predicted_vals, validation_index, perfClass, **kwargs)
+        roc_auc = super().save(true_vals, predicted_vals, perfClass, **kwargs)
         for fpr, tpr, trh in zip(*self.getCurve(true_vals, predicted_vals)):
             models.ROCCurvePoint.objects.create(
                 metric=models.ModelPerformanceMetric.objects.get(name=self.name),
@@ -38,13 +37,12 @@ class ROC(bases.ValidationMetric):
                 value=tpr,
                 fpr=fpr,
                 auc=roc_auc,
-                validationIndex=validation_index,
             )
         return roc_auc
 
     def getCurve(self, true_vals, scores):
         scores = scores if not isinstance(scores, list) else scores[0]
-        return metrics.roc_curve(true_vals, scores[:, 0])
+        return metrics.roc_curve(true_vals, scores[:, 0], pos_label=0)
 
 
 class MCC(bases.ValidationMetric):

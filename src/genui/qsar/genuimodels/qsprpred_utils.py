@@ -2,7 +2,6 @@ from qsprpred.models.monitors import BaseMonitor
 from genui.utils.inspection import camel_to_snake, snake_to_camel
 import traceback
 from genui.models import models
-from genui.models.genuimodels.bases import Algorithm
 import re
 
 
@@ -62,11 +61,11 @@ class MetricsAggregator:
         kwargs = {}
         if self.perfClass == models.ModelPerformanceCV:
             kwargs["fold"] = self.monitor.currentFold + 1
+            kwargs["validationIndex"] = self.monitor.validation_index
 
-        for metric_class in self.metricClasses:
+        for metric_class in self.metricClasses[self.monitor.validation_index]:
             try:
-                metric_class(self.builder).save(y_true, y_pred, self.monitor.validation_index,
-                                                self.perfClass, **kwargs)
+                metric_class(self.builder).save(y_true, y_pred, self.perfClass, **kwargs)
             except Exception as exp:
                 print("Failed to obtain values for metric: ", metric_class.name)
                 self.builder.errors.append(exp)
