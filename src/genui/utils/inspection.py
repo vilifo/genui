@@ -330,15 +330,16 @@ def get_default_params_django(class_=None, module_name=None):
     module = importlib.import_module(module_name)
     model_class = getattr(module, class_)
     parameters = {}
-    for field in model_class._meta.get_fields():
-        if isinstance(field, models.Field) and not field.auto_created: #and not isinstance(field, (models.ForeignKey,
-                                                                                                 # models.OneToOneField,
-                                                                                                 # models.ManyToManyField)):
-            field_type = field.get_internal_type()
-            field_type = django_field2python.get(field_type, field_type)
-            default_value = field.default if field.default != models.NOT_PROVIDED else None
-            if field.name not in DISCARD_NAMES:
-                parameters[field.name] = {"type":field_type, "value":default_value}
+    if not hasattr(model_class, "arguments"):
+        for field in model_class._meta.get_fields():
+            if isinstance(field, models.Field) and not field.auto_created:
+                field_type = field.get_internal_type()
+                field_type = django_field2python.get(field_type, field_type)
+                default_value = field.default if field.default != models.NOT_PROVIDED else None
+                if field.name not in DISCARD_NAMES:
+                    parameters[field.name] = {"type":field_type, "value":default_value}
+    else:
+        parameters = model_class.arguments
     return parameters
 
 

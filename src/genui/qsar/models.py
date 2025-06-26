@@ -68,17 +68,19 @@ class FPSimilarityLeaderPickerClusters(FPSimilarityClusters):
 class TemporalSplit(DataSplit):
     timeSplit = models.FloatField(blank=False)
     timeProp = models.CharField(max_length=128, blank=False)
+    arguments = {"timeSplit": {"type":"int", "value": 0}}
 
 
 class GBMTDataSplit(DataSplit):
     clustering = models.ForeignKey(MoleculeClusters, null=False, on_delete=models.CASCADE)
-    testFraction = models.FloatField(blank=True, null=True, default=0.8)  # mutually exclusive with nFolds
-    # nFolds = models.IntegerField(blank=True, null=True)  # mutually exclusive with testFraction
+    testFraction = models.FloatField(blank=True, null=True, default=0.2)  # mutually exclusive with nFolds
+    # nFolds = models.IntegerField(blank=True, null=True) # mutually exclusive with testFraction
 
 
 class GBMTRandomSplit(GBMTDataSplit):
     seed = models.IntegerField(blank=True, default=42)
     nInitialClusters = models.IntegerField(blank=True, null=True, default=2)
+    arguments = {"seed": {"type":"int", "value": 42}, "nInitialClusters": {"type":"int", "value": 2}}
 
     def save(self, *args, **kwargs):
         self.clustering = RandomClusters.objects.create(seed=self.seed, nClusters=self.nInitialClusters)
@@ -87,6 +89,7 @@ class GBMTRandomSplit(GBMTDataSplit):
 
 class ScaffoldSplit(GBMTDataSplit):
     scaffold = models.ForeignKey(ScaffoldCalculator, null=False, on_delete=models.CASCADE)
+    arguments = {"scaffold": {"type":"str", "value": "BemisMurckoRDKit"}, "testFraction": {"type":"float", "value": 0.2}}
 
     def save(self, *args, **kwargs):
         self.clustering = ScaffoldClusters.objects.create(scaffold=self.scaffold)
