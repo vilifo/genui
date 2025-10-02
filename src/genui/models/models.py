@@ -307,7 +307,7 @@ class DataSplit(PolymorphicModel):
 
 
 class RandomSplit(DataSplit):
-    testFraction = models.FloatField(blank=False, default=0.8)
+    testFraction = models.FloatField(blank=False, default=0.2)
     seed = models.IntegerField(blank=True, default=42)
 
 

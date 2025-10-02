@@ -80,7 +80,9 @@ class GBMTDataSplit(DataSplit):
 class GBMTRandomSplit(GBMTDataSplit):
     seed = models.IntegerField(blank=True, default=42)
     nInitialClusters = models.IntegerField(blank=True, null=True, default=2)
-    arguments = {"seed": {"type":"int", "value": 42}, "nInitialClusters": {"type":"int", "value": 2}}
+    arguments = {"seed": {"type":"int", "value": 42},
+                 "nInitialClusters": {"type":"int", "value": 2},
+                 "testFraction": {"type":"float", "value": 0.2}}
 
     def save(self, *args, **kwargs):
         self.clustering = RandomClusters.objects.create(seed=self.seed, nClusters=self.nInitialClusters)
