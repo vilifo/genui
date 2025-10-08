@@ -12,7 +12,6 @@ from genui.models.models import (ModelFileFormat, ModelBuilder, Model, PARAM_VAL
                                  Algorithm, TrainingStrategy, ModelFile, BasicValidationStrategy,
                                  ModelPerformanceMetric, ValidationStrategy, \
                                  AlgorithmMode, ModelParameterValue, ModelPerformance, DataSplit, RandomSplit,
-                                 ValueAggregationFunction,
                                  HyperparameterOptimizationStrategy, GridSearchOptimization, OptunaOptimization)
 from genui.models import models
 from genui.projects.models import Project
@@ -80,15 +79,9 @@ class ModelParameterValueSerializer(serializers.HyperlinkedModelSerializer):
         fields = ('id', 'parameter', 'value')
 
 
-class ValueAggregationFunctionSerializer(serializers.HyperlinkedModelSerializer):
-    class Meta:
-        model = ValueAggregationFunction
-        fields = ('id', 'name', 'description')
-
-
 class HyperparameterOptimizationStrategySerializer(serializers.HyperlinkedModelSerializer):
     metric = ModelPerformanceMetricSerializer(many=False)
-    scoreAggregation = ValueAggregationFunctionSerializer(many=False)
+    scoreAggregation = serializers.CharField()
     searchSpace = serializers.JSONField()
 
     class Meta:
@@ -98,7 +91,7 @@ class HyperparameterOptimizationStrategySerializer(serializers.HyperlinkedModelS
 
 class HyperparameterOptimizationStrategyInitSerializer(HyperparameterOptimizationStrategySerializer):
     metric = serializers.PrimaryKeyRelatedField(many=False, queryset=ModelPerformanceMetric.objects.all())
-    scoreAggregation = serializers.PrimaryKeyRelatedField(many=False, queryset=ValueAggregationFunction.objects.all())
+    scoreAggregation = serializers.CharField()
     searchSpace = serializers.JSONField()
 
     class Meta:

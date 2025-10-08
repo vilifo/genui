@@ -22,7 +22,6 @@ router.register(r'metrics', views.QSARMetricsViewSet, basename='metric')
 router.register(r'embeddings', views.EmbeddingGroupsViewSet, basename='embedding')
 router.register(r"data-splits", views.QSARDataSplitViewSet, basename='data-split')
 router.register(r'hyper-parameters', views.QSARHyperParameterOptimizationViewSet, basename='hyper-parameter')
-router.register(r'aggregation-functions', views.QSARAggregationFunctionViewSet, basename='aggregation-function')
 # router.register(r'predictions', views.ModelPredictionsViewSet, basename='prediction')
 
 

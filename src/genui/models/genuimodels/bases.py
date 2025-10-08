@@ -254,38 +254,6 @@ class ValidationMetric(ABC):
         )
 
 
-class ValueAggregationFunction(ABC):
-    name = None
-    description = None
-
-    def __init__(self, builder):
-        self.builder = builder
-
-    @classmethod
-    def getDjangoModel(cls, corePackage=None, update=False):
-        if not cls.name:
-            raise Exception('You have to specify a name for the aggregation function in its class "name" property')
-
-        ret, ret_created = models.ValueAggregationFunction.objects.get_or_create(name=cls.name)
-
-        # just return if we are not setting up a new instance
-        if not ret_created and not update:
-            return ret
-
-        # just return if we are not creating a new instance
-        if corePackage:
-            ret.corePackage = corePackage
-            ret.save()
-        if hasattr(cls, 'description'):
-            ret.description = cls.description
-            ret.save()
-        return ret
-
-    @abstractmethod
-    def __call__(self, predicted_vals: Series | np.ndarray):
-        pass
-
-
 class ModelBuilder(ABC):
 
     @classmethod
@@ -326,18 +294,6 @@ class ModelBuilder(ABC):
         except LookupError:
             return None
 
-    def findAggregationFunctionClass(self, name, corePackage=None):
-        if not corePackage:
-            corePackage = self.corePackage
-        try:
-            return findSubclassByID(
-                ValueAggregationFunction
-                , importFromPackage(corePackage, "aggregations")
-                , "name"
-                , name
-            )
-        except LookupError:
-            return None
 
     def __init__(
             self,
@@ -362,8 +318,7 @@ class ModelBuilder(ABC):
             self.metricClasses.append(
                 [self.findMetricClass(x.name, x.corePackage) for x in validation.metrics.all() if x])
         if self.hyper_param_opt:
-            aggregation = self.hyper_param_opt.scoreAggregation.name
-            self.hyper_param_aggregator = self.findAggregationFunctionClass(aggregation)
+            self.hyper_param_aggregator = getattr(np, self.hyper_param_opt.scoreAggregation)
             self.hypo_metric = self.findMetricClass(self.hyper_param_opt.metric.name)
         self.progress = progress
         self.errors = []

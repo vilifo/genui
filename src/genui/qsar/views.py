@@ -9,7 +9,7 @@ from rest_framework import serializers as rest_serializers
 
 from genui.models import models as genui_models
 from genui.models.serializers import HyperparameterOptimizationStrategySerializer
-from genui.models.views import ModelViewSet, AlgorithmViewSet, MetricsViewSet, PredictMixIn, DataSplitViewSet, AggregationFunctionViewSet
+from genui.models.views import ModelViewSet, AlgorithmViewSet, MetricsViewSet, PredictMixIn, DataSplitViewSet
 from genui.models.genuimodels.bases import Algorithm
 from genui.qsar.genuimodels.builders import BasicQSARModelBuilder
 from genui.qsar.genuimodels.bases import EmbeddingBuilderMixIn, EmbeddingCalculator
@@ -232,12 +232,6 @@ class QSARMetricsViewSet(MetricsViewSet):
         ret = super().get_queryset()
         modes = genui_models.AlgorithmMode.objects.filter(name__in=(Algorithm.CLASSIFICATION, Algorithm.REGRESSION))
         return ret.filter(validModes__in=modes)
-
-
-class QSARAggregationFunctionViewSet(AggregationFunctionViewSet):
-    def get_queryset(self):
-        ret = super().get_queryset()
-        return ret
 
 
 class QSPRPredSklearnModelViewSet(viewsets.ViewSet):

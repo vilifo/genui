@@ -294,14 +294,6 @@ class ModelPerformanceMetric(ImportableModelComponent):
         return '%s object (%s)' % (self.__class__.__name__, self.name)
 
 
-class ValueAggregationFunction(ImportableModelComponent):
-    name = models.CharField(unique=True, blank=False, max_length=128)
-    description = models.TextField(max_length=10000, blank=True)
-
-    def __str__(self):
-        return '%s object (%s)' % (self.__class__.__name__, self.name)
-
-
 class DataSplit(PolymorphicModel):
     pass
 
@@ -326,8 +318,7 @@ class ValidationStrategy(PolymorphicModel):
 class HyperparameterOptimizationStrategy(PolymorphicModel):
     searchSpace = models.JSONField(blank=True)
     metric = models.ForeignKey(ModelPerformanceMetric, null=False, on_delete=models.CASCADE)
-    scoreAggregation = models.ForeignKey(ValueAggregationFunction, null=False, on_delete=models.CASCADE,
-                                         related_name='hyperParamOptStrategies')
+    scoreAggregation = models.CharField(max_length=64, blank=False)
     trainingStrategy = models.ForeignKey(TrainingStrategy, null=False, on_delete=models.CASCADE,
                                          related_name='hyperParamOptStrategies')
 

@@ -49,7 +49,6 @@ def setup(*args, **kwargs):
             models.ModelFileFormat,
             models.ModelParameter,
             models.ModelPerformanceMetric,
-            models.ValueAggregationFunction
         ],
         permissions=['view'],
         force=kwargs['force']

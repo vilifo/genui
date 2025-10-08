@@ -12,7 +12,7 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from genui.compounds.extensions.chembl.tests import CompoundsMixIn
 from genui.compounds.models import ActivityTypes, ActivityUnits
 from genui.models.models import ModelPerformance, Algorithm, AlgorithmMode, ModelFile, ModelPerformanceMetric, \
-    BasicValidationStrategy, RandomSplit, ValueAggregationFunction
+    BasicValidationStrategy, RandomSplit
 from genui.qsar.models import QSARModel, ModelActivitySet
 from .genuimodels import builders
 
@@ -507,14 +507,14 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             "resourcetype": "GridSearchOptimization",
             "searchSpace": {"n_estimators": [150, 200], "criterion": ["gini", "entropy", "log_loss"]},
             "metric": ModelPerformanceMetric.objects.get(name="Accuracy").id,
-            "scoreAggregation": ValueAggregationFunction.objects.get(name="Mean").id
+            "scoreAggregation": "mean"
         }], )
         self.createTestQSARModel(hyperParamOptStrategies=[{
             "resourcetype": "OptunaOptimization",
             "searchSpace": {"n_estimators": ["int", 100, 250],
                             "criterion": ["categorical", ["gini", "entropy", "log_loss"]]},
             "metric": ModelPerformanceMetric.objects.get(name="F1").id,
-            "scoreAggregation": ValueAggregationFunction.objects.get(name="Mean").id,
+            "scoreAggregation": "mean",
             "nTrials": 10,
         }])
 
