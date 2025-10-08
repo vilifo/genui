@@ -41,12 +41,12 @@ globals().update({
     for name in fingerprint_types
 })
 
-descriptor_sets_types = [
+descriptor_set_types = [
     name for name in dir(DescriptorSet.module)
     if not name.startswith('_')
 ]
 
 globals().update({
     name: create_descriptor_set_class(name)
-    for name in descriptor_sets_types
+    for name in descriptor_set_types
 })
