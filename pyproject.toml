@@ -54,7 +54,7 @@ dependencies = [
     'django-rdkit @ git+https://github.com/rdkit/django-rdkit.git',
     'chembl_structure_pipeline',
     'nvgpu',
-    'numpy < 2.0.0',
+    'numpy',
     'numpydoc',
     'qsprpred'
 ]
