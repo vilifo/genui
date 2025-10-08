@@ -9,7 +9,7 @@ from genui.utils.inspection import get_default_params
 class EmbeddingCalculator(ABC):
     name = None
     no_init = True
-    _module = None
+    module = None
     _model = models.EmbeddingCalculator
 
     def __init__(self, builder):
@@ -17,11 +17,11 @@ class EmbeddingCalculator(ABC):
         self.instance = None
 
     def __call__(self, **kwargs):
-        self.instance = getattr(self._module, self.name)(**kwargs)
+        self.instance = getattr(self.module, self.name)(**kwargs)
         return self.instance
 
     def get_default_parameters(self):
-        params =  get_default_params(self.name, self._module.__name__)
+        params =  get_default_params(self.name, self.module.__name__)
         if "kwargs" in params:
             params.pop("kwargs")
         return params
@@ -46,7 +46,7 @@ class EmbeddingCalculator(ABC):
 
 class ScaffoldCalculator(EmbeddingCalculator):
     name = None
-    _module = importlib.import_module("qsprpred.data.chem.scaffolds")
+    module = importlib.import_module("qsprpred.data.chem.scaffolds")
     _model = models.ScaffoldCalculator
 
 
