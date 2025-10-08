@@ -1,9 +1,3 @@
-"""
-metrics
-
-Created by: Martin Sicho
-On: 24-01-20, 15:04
-"""
 from pandas import Series
 from sklearn import metrics
 

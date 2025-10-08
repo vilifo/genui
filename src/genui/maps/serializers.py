@@ -1,9 +1,3 @@
-"""
-serializers
-
-Created by: Martin Sicho
-On: 25-02-20, 16:35
-"""
 from rest_framework import serializers
 
 from genui.compounds.models import MolSet, Molecule

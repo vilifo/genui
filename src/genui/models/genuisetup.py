@@ -1,9 +1,3 @@
-"""
-genuisetup
-
-Created by: Martin Sicho
-On: 4/28/20, 4:43 PM
-"""
 
 def setup(*args, **kwargs):
     from . import signals

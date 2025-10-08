@@ -1,9 +1,3 @@
-"""
-bases
-
-Created by: Martin Sicho
-On: 24-01-20, 15:03
-"""
 import logging
 import traceback
 import weakref

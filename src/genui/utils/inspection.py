@@ -1,9 +1,3 @@
-"""
-inspection
-
-Created by: Martin Sicho
-On: 4/30/20, 8:55 AM
-"""
 import sys
 import re
 import pkgutil

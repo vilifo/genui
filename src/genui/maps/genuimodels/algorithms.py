@@ -1,9 +1,3 @@
-"""
-algorithms
-
-Created by: Martin Sicho
-On: 25-02-20, 15:13
-"""
 from abc import ABC, abstractmethod
 
 import openTSNE

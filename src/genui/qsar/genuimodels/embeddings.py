@@ -1,8 +1,3 @@
-"""
-
-Created by: Martin Sicho
-On: 16-01-20, 11:08
-"""
 
 import importlib
 from . import bases

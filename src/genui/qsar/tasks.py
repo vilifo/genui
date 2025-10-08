@@ -1,9 +1,3 @@
-"""
-tasks
-
-Created by: Martin Sicho
-On: 29-11-19, 13:44
-"""
 
 from genui.utils.extensions.tasks.progress import ProgressRecorder
 from celery import shared_task

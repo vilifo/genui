@@ -1,9 +1,3 @@
-"""
-builders
-
-Created by: Martin Sicho
-On: 15-01-20, 12:55
-"""
 import json
 import importlib
 import inspect

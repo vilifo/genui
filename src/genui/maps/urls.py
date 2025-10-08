@@ -1,9 +1,3 @@
-"""
-urls
-
-Created by: Martin Sicho
-On: 25-02-20, 16:29
-"""
 from django.urls import path, include
 from rest_framework import routers
 

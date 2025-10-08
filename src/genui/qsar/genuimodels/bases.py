@@ -1,7 +1,3 @@
-"""
-Created by: Martin Sicho
-On: 14-01-20, 10:16
-"""
 
 from abc import ABC
 import importlib

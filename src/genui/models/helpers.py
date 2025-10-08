@@ -1,9 +1,3 @@
-"""
-helpers
-
-Created by: Martin Sicho
-On: 30-01-20, 13:29
-"""
 import importlib
 import json
 import logging
