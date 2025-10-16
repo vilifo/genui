@@ -3,8 +3,7 @@ from rest_polymorphic.serializers import PolymorphicSerializer
 
 from genui.utils.serializers import GenericModelSerializerMixIn
 from genui.models.models import (ModelFileFormat, ModelBuilder, Model, PARAM_VALUE_CTYPE_TO_MODEL_MAP, ModelParameter, \
-                                 Algorithm, TrainingStrategy, ModelFile, BasicValidationStrategy,
-                                 ModelPerformanceMetric, ValidationStrategy, \
+                                 Algorithm, TrainingStrategy, ModelFile, BasicValidationStrategy, ValidationStrategy, \
                                  AlgorithmMode, ModelParameterValue, ModelPerformance, DataSplit, RandomSplit,
                                  HyperparameterOptimizationStrategy, GridSearchOptimization, OptunaOptimization)
 from genui.models import models
@@ -45,19 +44,10 @@ class AlgorithmSerializer(serializers.HyperlinkedModelSerializer):
         fields = ('id', 'name', 'fileFormats', 'parameters', 'validModes')
 
 
-class ModelPerformanceMetricSerializer(serializers.HyperlinkedModelSerializer):
-    validAlgorithms = serializers.PrimaryKeyRelatedField(many=True, queryset=Algorithm.objects.all())
-    validModes = AlgorithmModeSerializer(many=True)
-
-    class Meta:
-        model = ModelPerformanceMetric
-        fields = ('id', 'name', 'description', 'validAlgorithms', 'validModes')
-
-
 class ModelPerformanceSerializer(GenericModelSerializerMixIn, serializers.HyperlinkedModelSerializer):
     className = GenericModelSerializerMixIn.className
     extraArgs = GenericModelSerializerMixIn.extraArgs
-    metric = ModelPerformanceMetricSerializer(many=False)
+    metric = serializers.CharField()
 
     class Meta:
         model = ModelPerformance
@@ -74,7 +64,7 @@ class ModelParameterValueSerializer(serializers.HyperlinkedModelSerializer):
 
 
 class HyperparameterOptimizationStrategySerializer(serializers.HyperlinkedModelSerializer):
-    metric = ModelPerformanceMetricSerializer(many=False)
+    metric = serializers.CharField()
     scoreAggregation = serializers.CharField()
     searchSpace = serializers.JSONField()
 
@@ -84,7 +74,7 @@ class HyperparameterOptimizationStrategySerializer(serializers.HyperlinkedModelS
 
 
 class HyperparameterOptimizationStrategyInitSerializer(HyperparameterOptimizationStrategySerializer):
-    metric = serializers.PrimaryKeyRelatedField(many=False, queryset=ModelPerformanceMetric.objects.all())
+    metric = serializers.CharField()
     scoreAggregation = serializers.CharField()
     searchSpace = serializers.JSONField()
 
@@ -166,7 +156,7 @@ class HyperparameterOptimizationStrategyPolymorphicInitSerializer(PolymorphicSer
 
 
 class ValidationStrategySerializer(serializers.HyperlinkedModelSerializer):
-    metrics = ModelPerformanceMetricSerializer(many=True)
+    metrics = serializers.CharField()
 
     class Meta:
         model = ValidationStrategy
@@ -174,7 +164,7 @@ class ValidationStrategySerializer(serializers.HyperlinkedModelSerializer):
 
 
 class ValidationStrategyInitSerializer(ValidationStrategySerializer):
-    metrics = serializers.PrimaryKeyRelatedField(many=True, queryset=ModelPerformanceMetric.objects.all())
+    metrics = serializers.CharField()
 
     class Meta:
         model = ValidationStrategy
@@ -182,7 +172,7 @@ class ValidationStrategyInitSerializer(ValidationStrategySerializer):
 
 
 class BasicValidationStrategyInitSerializer(ValidationStrategyInitSerializer):
-    metrics = serializers.PrimaryKeyRelatedField(many=True, queryset=ModelPerformanceMetric.objects.all())
+    metrics = serializers.ListSerializer(child=serializers.CharField())
     cvFolds = serializers.IntegerField(min_value=0)
     dataSplit = serializers.PrimaryKeyRelatedField(many=False, queryset=DataSplit.objects.all())
 
@@ -194,7 +184,7 @@ class BasicValidationStrategyInitSerializer(ValidationStrategyInitSerializer):
 
 
 class BasicValidationStrategySerializer(BasicValidationStrategyInitSerializer):
-    metrics = ModelPerformanceMetricSerializer(many=True)
+    metrics = serializers.ListSerializer(child=serializers.CharField())
 
 
 class ValidationStrategyPolymorphicSerializer(PolymorphicSerializer):

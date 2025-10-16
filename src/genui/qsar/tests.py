@@ -11,8 +11,8 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 from genui.compounds.extensions.chembl.tests import CompoundsMixIn
 from genui.compounds.models import ActivityTypes, ActivityUnits
-from genui.models.models import ModelPerformance, Algorithm, AlgorithmMode, ModelFile, ModelPerformanceMetric, \
-    BasicValidationStrategy, RandomSplit
+from genui.models.models import ModelPerformance, Algorithm, AlgorithmMode, ModelFile, \
+    BasicValidationStrategy, RandomSplit, MetricCurvePoint
 from genui.qsar.models import QSARModel, ModelActivitySet
 from .genuimodels import builders
 
@@ -82,10 +82,7 @@ class QSARModelInit(CompoundsMixIn):
         if not embeddings:
             embeddings = [{"name": "MorganFP", "arguments": {"radius": 2, "nBits": 2048}}, ]
         if not metrics:
-            metrics = [
-                ModelPerformanceMetric.objects.get(name="MCC"),
-                ModelPerformanceMetric.objects.get(name="ROC"),
-            ]
+            metrics = ["matthews_corrcoef", "roc_curve"]
         if not dataSplit:
             dataSplit = {"name": "RandomSplit",
                          "testFraction": 0.2,
@@ -111,9 +108,7 @@ class QSARModelInit(CompoundsMixIn):
                     "resourcetype": "BasicValidationStrategy",
                     "dataSplit": dataSplit,
                     "cvFolds": 3,
-                    "metrics": [
-                        x.id for x in metrics
-                    ]
+                    "metrics": metrics
                 }] if not validationStrategies else validationStrategies,
                 "hyperParamOptStrategies": hyperParamOptStrategies
             }
@@ -273,7 +268,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             parameters={"alg": "RandomForestRegressor",
                         "parameters": json.dumps({"n_estimators": 150, })
                         },
-            metrics=ModelPerformanceMetric.objects.filter(name__in=("R2", "MSE")),
+            metrics=["r2", "neg_mean_squared_error"],
             activityType=ActivityTypes.objects.get(value="Ki")
         )
         self.assertEqual(model.predictionsType, ActivityTypes.objects.get(value="Ki"))
@@ -332,7 +327,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             cvFolds=5,
             dataSplit=randomSplit,
         )
-        second_strategy.metrics.set(ModelPerformanceMetric.objects.filter(name__in=["R2", "MSE"]))
+        second_strategy.metrics = ["r2", "mean_squared_error"]
         model.trainingStrategy.validationStrategies.add(second_strategy)
 
         # Check if the training strategy has multiple validation strategies
@@ -341,7 +336,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         # Verify that the validation strategies are different
         validation_strategies = list(model.trainingStrategy.validationStrategies.all())
         self.assertNotEqual(validation_strategies[0].cvFolds, validation_strategies[1].cvFolds)
-        self.assertNotEqual(set(validation_strategies[0].metrics.all()), set(validation_strategies[1].metrics.all()))
+        self.assertNotEqual(set(validation_strategies[0].metrics), set(validation_strategies[1].metrics))
 
     def test_default_validation_strategy_parameters(self):
         """
@@ -350,15 +345,13 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         The default validation strategy should have the following parameters:
         - cvFolds: 3
         - validSetSize: 0.2
-        - metrics: MCC, ROC
+        - metrics: matthews_corrcoef
         """
         model = self.createTestQSARModel()
         validation_strategy = model.trainingStrategy.validationStrategies.first()
         self.assertEqual(validation_strategy.cvFolds, 3)
         self.assertEqual(validation_strategy.dataSplit.testFraction, 0.2)
-        self.assertEqual(set(validation_strategy.metrics.all()),
-                         set(ModelPerformanceMetric.objects.filter(name__in=["MCC", "ROC"]))
-                         )
+        self.assertEqual(set(validation_strategy.metrics), set(["matthews_corrcoef", "roc_curve"]))
 
     def test_update_validation_strategy(self):
         """Test that the validation strategy parameters can be updated"""
@@ -388,10 +381,10 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         """Test associating performance metrics with validation strategies."""
         model = self.createTestQSARModel()
         validation_strategy = model.trainingStrategy.validationStrategies.first()
-        metrics = ModelPerformanceMetric.objects.filter(name__in=["R2", "MSE"])
-        validation_strategy.metrics.set(metrics)
+        metrics = ["r2", "mean_squared_error"]
+        validation_strategy.metrics = metrics
         validation_strategy.save()
-        self.assertEqual(set(validation_strategy.metrics.all()), set(metrics))
+        self.assertEqual(set(validation_strategy.metrics), set(metrics))
 
     def test_change_data_split(self):
         model = self.createTestQSARModel()
@@ -506,14 +499,14 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         self.createTestQSARModel(hyperParamOptStrategies=[{
             "resourcetype": "GridSearchOptimization",
             "searchSpace": {"n_estimators": [150, 200], "criterion": ["gini", "entropy", "log_loss"]},
-            "metric": ModelPerformanceMetric.objects.get(name="Accuracy").id,
+            "metric": "f1",
             "scoreAggregation": "mean"
         }], )
         self.createTestQSARModel(hyperParamOptStrategies=[{
             "resourcetype": "OptunaOptimization",
             "searchSpace": {"n_estimators": ["int", 100, 250],
                             "criterion": ["categorical", ["gini", "entropy", "log_loss"]]},
-            "metric": ModelPerformanceMetric.objects.get(name="F1").id,
+            "metric": "f1",
             "scoreAggregation": "mean",
             "nTrials": 10,
         }])
@@ -536,10 +529,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
                          "seed": 42,
                          },
                 "cvFolds": 3,
-                "metrics": [
-                    ModelPerformanceMetric.objects.get(name="MCC").id,
-                    ModelPerformanceMetric.objects.get(name="ROC").id
-                ]
+                "metrics": ["matthews_corrcoef"]
             },
             {
                 "resourcetype": "BasicValidationStrategy",
@@ -548,11 +538,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
                          "seed": 111,
                          },
                 "cvFolds": 5,
-                "metrics": [
-                    ModelPerformanceMetric.objects.get(name="MCC").id,
-                    ModelPerformanceMetric.objects.get(name="ROC").id,
-                    ModelPerformanceMetric.objects.get(name="Accuracy").id,
-                ]
+                "metrics": ["matthews_corrcoef", "accuracy"]
             }
         ]
         model = self.createTestQSARModel(validationStrategies=validation_strategies)
@@ -574,3 +560,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
                                                   "ccp_alpha": 0.0,
                                                   "max_samples": 0.001})
                         },)
+
+    def test_all_metric_curves(self):
+        model = self.createTestQSARModel(metrics=["roc_curve", "precision_recall_curve", "det_curve"])
+        print(MetricCurvePoint.objects.filter(model=model))

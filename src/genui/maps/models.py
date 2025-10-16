@@ -1,5 +1,6 @@
 import json
 import logging
+import traceback
 from django.core.files.base import ContentFile
 from django.db import models, transaction
 from django.db.models import Avg
@@ -88,7 +89,8 @@ class Map(Model):
                             avg_value = avg['value__avg']
                             point_data['features'].append(avg_value)
                         except Exception as e:
-                            logger.error(f"Error calculating average for activity type {activity_type}: {str(e)}")
+                            logger.error(f"Error calculating average for activity type {activity_type}: {str(e)}"
+                                         f" {traceback.format_exc()}")
                             point_data['features'].append(None)
                     else:
                         point_data['features'].append(None)

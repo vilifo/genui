@@ -1,9 +1,9 @@
 import os
 
 from django.db import models
+from django.contrib.postgres.fields import ArrayField
 import uuid
 
-# Create your models here.
 from djcelery_model.models import TaskMixin
 from polymorphic.models import PolymorphicModel
 
@@ -197,16 +197,6 @@ class Model(TaskShortcutsMixIn, TaskMixin, DataSet):
 
         pass
 
-    # @modelFile.setter
-    # def modelFile(self, val):
-    #     main = self.files.filter(kind=ModelFile.MAIN)
-    #     if main:
-    #         main.delete()
-    #     val.kind = ModelFile.MAIN
-    #     val.save()
-    #     self.files.add(val)
-    #     self.save()
-
     @property
     def trainingStrategy(self):
         count = self.trainingStrategies.count()
@@ -217,16 +207,6 @@ class Model(TaskShortcutsMixIn, TaskMixin, DataSet):
         else:
             raise Exception(
                 "Training strategy returned more than one value. This indicates an integrity error in the database!")
-
-    # @property
-    # def validationStrategy(self):
-    #     count = self.validationStrategies.count()
-    #     if count == 1:
-    #         return self.validationStrategies.get()
-    #     elif count == 0:
-    #         return None
-    #     else:
-    #         raise Exception("Validation strategy returned more than one value. This indicates an integrity error in the database!")
 
 
 class TrainingStrategy(PolymorphicModel):
@@ -284,16 +264,6 @@ PARAM_VALUE_CTYPE_TO_MODEL_MAP = {
 }
 
 
-class ModelPerformanceMetric(ImportableModelComponent):
-    name = models.CharField(unique=True, blank=False, max_length=128)
-    validModes = models.ManyToManyField(AlgorithmMode, related_name='metrics')
-    validAlgorithms = models.ManyToManyField(Algorithm, related_name='metrics')
-    description = models.TextField(max_length=10000, blank=True)
-
-    def __str__(self):
-        return '%s object (%s)' % (self.__class__.__name__, self.name)
-
-
 class DataSplit(PolymorphicModel):
     pass
 
@@ -310,14 +280,14 @@ class BootstrapSplit(DataSplit):
 
 
 class ValidationStrategy(PolymorphicModel):
-    metrics = models.ManyToManyField(ModelPerformanceMetric)
+    metrics = ArrayField(models.CharField(max_length=64), default=list)
     trainingStrategy = models.ForeignKey(TrainingStrategy, null=False, on_delete=models.CASCADE,
                                          related_name='validationStrategies')
 
 
 class HyperparameterOptimizationStrategy(PolymorphicModel):
     searchSpace = models.JSONField(blank=True)
-    metric = models.ForeignKey(ModelPerformanceMetric, null=False, on_delete=models.CASCADE)
+    metric = models.CharField(blank=False, max_length=64)
     scoreAggregation = models.CharField(max_length=64, blank=False)
     trainingStrategy = models.ForeignKey(TrainingStrategy, null=False, on_delete=models.CASCADE,
                                          related_name='hyperParamOptStrategies')
@@ -350,14 +320,14 @@ class BasicValidationStrategy(ValidationSet, CV):
 
 
 class ModelPerformance(PolymorphicModel):
-    metric = models.ForeignKey(ModelPerformanceMetric, null=False, on_delete=models.CASCADE)
+    metric = models.CharField(blank=False, max_length=64)
     value = models.FloatField(blank=False)
     model = models.ForeignKey(Model, null=False, on_delete=NON_POLYMORPHIC_CASCADE, related_name="performance")
 
 
 class ModelPerformanceCV(ModelPerformance):
     fold = models.IntegerField(blank=False)
-    validationIndex = models.IntegerField(blank=False)
+    validationStrategyIndex = models.IntegerField(blank=False)
 
 
 class ModelPerformanceNN(ModelPerformance):
@@ -365,12 +335,12 @@ class ModelPerformanceNN(ModelPerformance):
     step = models.IntegerField(null=False, blank=False)
 
 
-class ROCCurvePoint(ModelPerformance):
-    fpr = models.FloatField(blank=False)
+class MetricCurvePoint(ModelPerformance):
+    independent = models.FloatField(blank=False)
     auc = models.ForeignKey(ModelPerformance, null=False, on_delete=NON_POLYMORPHIC_CASCADE, related_name="points")
 
     @property
-    def tpr(self):
+    def dependent(self):
         return self.value
 
 

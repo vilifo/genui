@@ -42,7 +42,6 @@ def setup(*args, **kwargs):
             models.ModelBuilder,
             models.ModelFileFormat,
             models.ModelParameter,
-            models.ModelPerformanceMetric,
         ],
         permissions=['view'],
         force=kwargs['force']

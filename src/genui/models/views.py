@@ -17,9 +17,8 @@ from genui.utils.extensions.tasks.utils import runTask
 from genui.accounts.serializers import FilterToUserMixIn
 from genui.projects.serializers import FilterToProjectMixIn
 from genui.utils.pagination import GenuiPagination
-from genui.models.models import ModelFile, ModelPerformance, Algorithm, ModelPerformanceMetric, Model, DataSplit
-from genui.models.serializers import ModelFileSerializer, ModelPerformanceSerializer, AlgorithmSerializer, \
-    ModelPerformanceMetricSerializer, DataSplitSerializer
+from genui.models.models import ModelFile, ModelPerformance, Algorithm, Model, DataSplit
+from genui.models.serializers import ModelFileSerializer, ModelPerformanceSerializer, AlgorithmSerializer, DataSplitSerializer
 
 
 class PerformancePagination(GenuiPagination):
@@ -54,8 +53,7 @@ class MetricsViewSet(
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet
 ):
-    queryset = ModelPerformanceMetric.objects.all()
-    serializer_class = ModelPerformanceMetricSerializer
+    pass
 
 
 class AlgorithmViewSet(

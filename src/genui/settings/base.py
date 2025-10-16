@@ -20,6 +20,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.sites',
+    'django.contrib.postgres',
     'corsheaders',
     'rest_framework',
     'rest_framework.authtoken',
@@ -115,7 +116,6 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Accounts
 ACCOUNT_EMAIL_VERIFICATION = 'none' # TODO: if we decide to expose this to the public somehow, we should make this 'mandatory'
-ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_CONFIRM_EMAIL_ON_GET = True
 # LOGIN_REDIRECT_URL = '/' # FIXME: should point to a reasonable location
 

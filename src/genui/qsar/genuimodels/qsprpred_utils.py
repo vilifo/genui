@@ -1,3 +1,5 @@
+from sklearn import metrics as sklearn_metrics
+from qsprpred.models import SklearnMetrics
 from qsprpred.models.monitors import BaseMonitor
 from genui.utils.inspection import camel_to_snake, snake_to_camel
 import traceback
@@ -52,7 +54,7 @@ class MetricsAggregator:
 
     def __init__(self, validation_metric, metrics, builder, monitor, perfClass=models.ModelPerformance):
         self.validation_metric = validation_metric
-        self.metricClasses = metrics
+        self.metricFunctions = metrics
         self._perfClass = perfClass
         self.monitor = monitor
         self.builder = builder
@@ -61,14 +63,59 @@ class MetricsAggregator:
         kwargs = {}
         if self.perfClass == models.ModelPerformanceCV:
             kwargs["fold"] = self.monitor.currentFold + 1
-            kwargs["validationIndex"] = self.monitor.validation_index
+            kwargs["validationStrategyIndex"] = self.monitor.validation_index
 
-        for metric_class in self.metricClasses[self.monitor.validation_index]:
+        for metric in self.metricFunctions[self.monitor.validation_index]:
             try:
-                metric_class(self.builder).save(y_true, y_pred, self.perfClass, **kwargs)
+                self.builder.saveMetricValue(metric, y_true, y_pred, self.perfClass, **kwargs)
             except Exception as exp:
-                print("Failed to obtain values for metric: ", metric_class.name)
+                print("Failed to obtain values for metric: ", metric.name)
                 self.builder.errors.append(exp)
                 traceback.print_exc()
-                continue
-        return self.validation_metric(self.builder)(y_true, y_pred)
+        return self.builder.saveMetricValue(self.validation_metric, y_true, y_pred, self.perfClass, **kwargs).value
+
+
+class CurveMetrics(SklearnMetrics):
+    def __init__(self, name):
+        super().__init__(self.get_curve_scorer(name))
+        self.curve = getattr(sklearn_metrics, name)
+        self.score = {'roc_curve': sklearn_metrics.roc_auc_score,
+                    'precision_recall_curve': sklearn_metrics.average_precision_score,
+                    'det_curve': lambda y_true, y_pred: -sklearn_metrics.auc(*self.curve(y_true, y_pred)[:2])}
+
+    @staticmethod
+    def get_curve_scorer(curve_type):
+        def roc_curve(y_true, y_score):
+            fpr, tpr, _ = sklearn_metrics.roc_curve(y_true, y_score)
+            return sklearn_metrics.auc(fpr, tpr)
+
+        def precision_recall_curve(y_true, y_score):
+            precision, recall, _ = sklearn_metrics.precision_recall_curve(y_true, y_score)
+            return sklearn_metrics.auc(recall, precision)
+
+        def det_curve(y_true, y_score):
+            fpr, fnr, _ = sklearn_metrics.det_curve(y_true, y_score)
+            return -sklearn_metrics.auc(fpr, fnr)  # Lower is better, so negate
+
+        scorers = {
+            'roc_curve': sklearn_metrics.make_scorer(roc_curve, response_method="predict_proba"),
+            'precision_recall_curve': sklearn_metrics.make_scorer(precision_recall_curve,
+                                                                  response_method="predict_proba"),
+            'det_curve': sklearn_metrics.make_scorer(det_curve, response_method="predict_proba",
+                                                     greater_is_better=False)
+        }
+
+        if curve_type not in scorers:
+            raise ValueError(f"Unsupported curve type: {curve_type}. Choose from {scorers.keys()}.")
+
+        return scorers[curve_type]
+
+    def __call__(self, y_true, y_pred, points=False):
+        y_true, y_pred = super().__call__(y_true, y_pred)
+        if points:
+            return self.curve(y_true, y_pred)
+        else:
+            return self.score[self.name](y_true, y_pred)
+
+    def _scorerFunc(self, y_true, y_pred):
+        return y_true, y_pred

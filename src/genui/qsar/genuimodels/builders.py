@@ -65,7 +65,7 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
         monitor = RecordProgressMonitor(self.recordProgress)
         monitor.on_fold_start = True
         monitor.on_optimization_start = True
-        metrics_aggregator = MetricsAggregator(self.metricClasses[0][0], [m for m in self.metricClasses], self, monitor,
+        metrics_aggregator = MetricsAggregator(self.metricFunctions[0][0], [m for m in self.metricFunctions], self, monitor,
                                                core_models.ModelPerformanceCV)
         self._model = self.algorithmClass(self)
 
@@ -79,7 +79,7 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
                     metrics_aggregator.perfClass = core_models.HyperparameterOptimizationPerformance
                     optimizer_class = getattr(qsprpred_models, self.hyper_param_opt.__class__.__name__)
                     kwargs = {"param_grid": self.hyper_param_opt.searchSpace,
-                              "model_assessor": CrossValAssessor(self.hypo_metric(self)),
+                              "model_assessor": CrossValAssessor(self.hypo_metric),
                               "score_aggregation": self.hyper_param_aggregator}
                     if "nTrials" in dir(self.hyper_param_opt):
                         kwargs["n_trials"] = self.hyper_param_opt.nTrials
@@ -184,27 +184,6 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
         return {param: getattr(django_model, snake_to_camel(param)) for param in
                 inspect.signature(qsprpred_class.__init__).parameters if
                 hasattr(django_model, snake_to_camel(param))}
-
-    # def fitAndValidate(self, X_train, y_train, X_valid, y_valid, y_predicted=None,
-    #                    perfClass=core_models.ModelPerformance, *args, **kwargs):
-    #     if not y_predicted:
-    #         model = self.algorithmClass(self)
-    #         model.fit(X_train, y_train)
-    #         y_predicted = model.predict(X_valid)
-    #     for validation in self.validations:
-    #         self.validate(validation, y_valid, y_predicted, perfClass, *args, **kwargs)
-
-    def validate(self, y_validated, y_predicted, perfClass=core_models.ModelPerformance, *args, **kwargs):
-        metric_classes = set(self.metricClasses) if not isinstance(self.metricClasses[0], list) \
-            else set([mc for mcs in self.metricClasses for mc in mcs])
-        for metric_class in metric_classes:
-            try:
-                metric_class(self).save(y_validated, y_predicted, perfClass, *args, **kwargs)
-            except Exception as exp:
-                print("Failed to obtain values for metric: ", metric_class.name)
-                self.errors.append(exp)
-                traceback.print_exc()
-                continue
 
     def getDataset(self) -> QSPRDataset:
         return self.dataset

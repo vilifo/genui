@@ -1,5 +1,5 @@
 import logging
-
+import traceback
 import pandas as pd
 from pandas import DataFrame, Series
 from qsprpred.data import MoleculeTable
@@ -57,11 +57,11 @@ class MapBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ProgressMixIn, ModelBui
             try:
                 self.instance.saveChemSpaceJSON()
             except Exception as e:
-                logger.error(f"Error saving ChemSpaceJS JSON for Map {self.instance.pk}: {str(e)}")
+                logger.error(f"Error saving ChemSpaceJS JSON for Map {self.instance.pk}: {str(e)} {traceback.format_exc()}")
                 raise
 
             self.recordProgress()
             return self.instance
         except Exception as e:
-            logger.error(f"Error building Map {self.instance.pk}: {str(e)}")
+            logger.error(f"Error building Map {self.instance.pk}: {str(e)} {traceback.format_exc()}")
             raise

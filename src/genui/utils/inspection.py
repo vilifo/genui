@@ -208,6 +208,18 @@ def get_sklearn_models():
 
     return regressors, classifiers
 
+def get_metrics():
+    from qsprpred.models.assessment.metrics import classification
+    from qsprpred.models.assessment.metrics import regression
+    from sklearn.metrics import get_scorer_names
+    cls_metrics = [m for m in dir(classification) if m[0].isupper() and not m.startswith("Calc") and m != "Metric"]
+    reg_metrics = [m for m in dir(regression) if m[0].isupper() and not m.startswith("Calc") and m != "Metric"]
+    cls_metrics = cls_metrics + ["precision_recall_curve", "roc_curve", "det_curve"]
+    metrics = {"classification": cls_metrics + get_scorer_names(), "regression": reg_metrics + get_scorer_names()}
+    return metrics
+
+METRICS = get_metrics()
+
 def parse_interval(constraint):
     constraint = str(constraint)
     type_ = "int" if "int" in constraint else "float" if "float" in constraint else None

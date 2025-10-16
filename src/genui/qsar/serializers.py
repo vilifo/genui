@@ -1,7 +1,6 @@
 import json
 
 from rest_framework import serializers
-
 from genui.compounds.models import ActivityTypes, ActivitySet, ActivityUnits
 from genui.compounds.serializers import MolSetSerializer, ActivitySetSerializer, ActivityTypeSerializer, \
     ActivityUnitsSerializer
@@ -11,7 +10,7 @@ from genui.models.serializers import TrainingStrategySerializer, ModelSerializer
 from genui.models import models as genui_models
 from . import models
 from .models import EmbeddingCalculator
-from ..utils.inspection import get_default_params, SKLEARN_MODELS
+from ..utils.inspection import get_default_params, SKLEARN_MODELS, METRICS
 
 
 class EmbeddingCalculatorSerializer(serializers.HyperlinkedModelSerializer):
@@ -104,6 +103,7 @@ class QSARModelInitSerializer(QSARModelSerializer):
                     vs["dataSplit"] = did.id
                 else:
                     vs["dataSplit"] = ds
+                    # TODO NOW: add warning if metrics are not unique, convert to set and back to list
             self.initial_data["trainingStrategy"]["validationStrategies"] = validation_strategies
 
         ret = super().is_valid(raise_exception=raise_exception)
@@ -141,12 +141,20 @@ class QSARModelInitSerializer(QSARModelSerializer):
                     raise serializers.ValidationError(
                         f"Parameter {param} is not valid for the selected algorithm {alg}.")
 
-        if ("hyperParamOptStrategies" in tr_strat_data and
-                len(tr_strat_data["hyperParamOptStrategies"]) > 0
-                and "validationStrategies" in tr_strat_data
-                and len(tr_strat_data["validationStrategies"]) > 1):
-            raise serializers.ValidationError(
-                "You cannot use more than one validation strategy with hyperparameter optimization.")
+        if "validationStrategies" in data["trainingStrategy"]:
+            for validation in data["trainingStrategy"]["validationStrategies"]:
+                for m in validation["metrics"]:
+                    if not m in METRICS[data["trainingStrategy"]["mode"].name]:
+                        raise serializers.ValidationError(f"Metric {m} is not a valid metric.")
+
+        if "hyperParamOptStrategies" in tr_strat_data and len(tr_strat_data["hyperParamOptStrategies"]) > 0:
+            if ("validationStrategies" in tr_strat_data
+                    and len(tr_strat_data["validationStrategies"]) > 1):
+                raise serializers.ValidationError(
+                    "You cannot use more than one validation strategy with hyperparameter optimization.")
+            metric = tr_strat_data["hyperParamOptStrategies"][0]["metric"]
+            if not metric in METRICS[data["trainingStrategy"]["mode"].name]:
+                raise serializers.ValidationError(f"Metric {metric} is not a valid metric.")
         return ret
 
     def create(self, validated_data, **kwargs):
@@ -179,8 +187,8 @@ class QSARModelInitSerializer(QSARModelSerializer):
                 trainingStrategy=trainingStrategy,
                 cvFolds=vs_data['cvFolds'],
                 dataSplit=vs_data['dataSplit'],
+                metrics=vs_data['metrics']
             )
-            validationStrategy.metrics.set(vs_data['metrics'])
             validationStrategy.save()
 
         if hypo_data:
