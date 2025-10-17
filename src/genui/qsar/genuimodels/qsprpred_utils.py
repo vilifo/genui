@@ -1,5 +1,5 @@
 import inspect
-
+import numpy as np
 from sklearn import metrics as sklearn_metrics
 from qsprpred.models import SklearnMetrics
 from qsprpred.models.monitors import BaseMonitor
@@ -84,7 +84,14 @@ class CurveMetrics(SklearnMetrics):
         self.curve = getattr(sklearn_metrics, name)
         self.score = {'roc_curve': sklearn_metrics.roc_auc_score,
                     'precision_recall_curve': sklearn_metrics.average_precision_score,
-                    'det_curve': lambda y_true, y_pred: -sklearn_metrics.auc(*self.curve(y_true, y_pred)[:2])}
+                    'det_curve': lambda y_true, y_pred: self._safe_auc_from_curve(self.curve, y_true, y_pred)}
+
+    @staticmethod
+    def _safe_auc_from_curve(curve_func, y_true, y_pred):
+        x, y = curve_func(y_true, y_pred)[:2]
+        if len(x) < 2 or len(y) < 2:
+            return np.nan
+        return -sklearn_metrics.auc(x, y)
 
     @staticmethod
     def get_curve_scorer(curve_type):
