@@ -264,21 +264,6 @@ PARAM_VALUE_CTYPE_TO_MODEL_MAP = {
 }
 
 
-class DataSplit(PolymorphicModel):
-    pass
-
-
-class RandomSplit(DataSplit):
-    testFraction = models.FloatField(blank=False, default=0.2)
-    seed = models.IntegerField(blank=True, default=42)
-
-
-class BootstrapSplit(DataSplit):
-    split = models.ForeignKey(DataSplit, null=False, on_delete=models.CASCADE, related_name="bootstrappedSplits")
-    nBootstraps = models.IntegerField(blank=False, default=10)
-    seed = models.IntegerField(blank=True, default=42)
-
-
 class ValidationStrategy(PolymorphicModel):
     metrics = ArrayField(models.CharField(max_length=64), default=list)
     trainingStrategy = models.ForeignKey(TrainingStrategy, null=False, on_delete=models.CASCADE,
@@ -309,7 +294,7 @@ class CV(ValidationStrategy):
 
 
 class ValidationSet(ValidationStrategy):
-    dataSplit = models.ForeignKey(DataSplit, null=True, on_delete=models.CASCADE)
+    dataSplit = models.JSONField(blank=False)
 
     class Meta:
         abstract = True

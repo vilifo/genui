@@ -1,8 +1,6 @@
 import json
 import importlib
-import inspect
 import tempfile
-import traceback
 from abc import ABC
 
 from rdkit import Chem
@@ -10,16 +8,14 @@ import numpy as np
 import pandas as pd
 
 from qsprpred.data import QSPRDataset
-from qsprpred.data.sampling import splits
 from qsprpred import models as qsprpred_models
 from qsprpred.models import CrossValAssessor, TestSetAssessor
 from sklearn.model_selection import KFold, StratifiedKFold
 
 from django.core.exceptions import ImproperlyConfigured
 from genui.compounds.models import Molecule
-from genui.utils.inspection import snake_to_camel, get_default_params
 
-from .qsprpred_utils import RecordProgressMonitor, MetricsAggregator
+from .qsprpred_utils import RecordProgressMonitor, MetricsAggregator, build_split_instance
 from genui.compounds.models import ActivityTypes, ActivitySet
 from genui.models import models as core_models
 from genui.models.genuimodels.bases import Algorithm, PredictionMixIn, ValidationMixIn, ProgressMixIn, ModelBuilder
@@ -72,7 +68,7 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
         for validation_strategy_index, validation in enumerate(self.validations):
             monitor.validation_index = validation_strategy_index
             if hasattr(validation, 'dataSplit') and hasattr(validation, 'cvFolds'):
-                split_instance = self._init_split(validation)
+                split_instance = build_split_instance(validation.dataSplit, dataset=dataset)
                 dataset.split(split_instance)
 
                 if self.hyper_param_opt:
@@ -160,30 +156,6 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
                 predictions[idx] = real_predictions.pop(0)
         assert len(real_predictions) == 0
         return np.array(predictions)
-
-    def _init_split(self, validation):
-        split_name = validation.dataSplit.__class__.__name__
-        split_instance = getattr(splits, split_name)
-        split_params = self._extract_kwargs(validation.dataSplit, split_instance)
-
-        kwargs = get_default_params(split_name, splits.__name__)
-        if "dataset" in kwargs:
-            split_params["dataset"] = self.dataset
-        if "scaffold" in kwargs:
-            split_params["scaffold"] = self._init_embedding_calculator(split_params["scaffold"], "scaffolds")
-        if "clustering" in kwargs:
-            clustering = getattr(clustering_module, split_params["clustering"].__class__.__name__)
-            fp_calculator = self._init_embedding_calculator(split_params["clustering"].FPCalculator)
-            clustering_kwargs = self._extract_kwargs(split_params["clustering"], clustering)
-            clustering_kwargs["fp_calculator"] = fp_calculator
-            split_params["clustering"] = clustering(**clustering_kwargs)
-        return split_instance(**split_params)
-
-    @staticmethod
-    def _extract_kwargs(django_model, qsprpred_class):
-        return {param: getattr(django_model, snake_to_camel(param)) for param in
-                inspect.signature(qsprpred_class.__init__).parameters if
-                hasattr(django_model, snake_to_camel(param))}
 
     def getDataset(self) -> QSPRDataset:
         return self.dataset

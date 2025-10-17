@@ -1,10 +1,11 @@
+import inspect
 from rest_framework import serializers
 from rest_polymorphic.serializers import PolymorphicSerializer
 
 from genui.utils.serializers import GenericModelSerializerMixIn
 from genui.models.models import (ModelFileFormat, ModelBuilder, Model, PARAM_VALUE_CTYPE_TO_MODEL_MAP, ModelParameter, \
                                  Algorithm, TrainingStrategy, ModelFile, BasicValidationStrategy, ValidationStrategy, \
-                                 AlgorithmMode, ModelParameterValue, ModelPerformance, DataSplit, RandomSplit,
+                                 AlgorithmMode, ModelParameterValue, ModelPerformance,
                                  HyperparameterOptimizationStrategy, GridSearchOptimization, OptunaOptimization)
 from genui.models import models
 from genui.projects.models import Project
@@ -174,7 +175,7 @@ class ValidationStrategyInitSerializer(ValidationStrategySerializer):
 class BasicValidationStrategyInitSerializer(ValidationStrategyInitSerializer):
     metrics = serializers.ListSerializer(child=serializers.CharField())
     cvFolds = serializers.IntegerField(min_value=0)
-    dataSplit = serializers.PrimaryKeyRelatedField(many=False, queryset=DataSplit.objects.all())
+    dataSplit = serializers.JSONField()
 
     # TODO: check if correct metrics are used with the correct algorithm
 
@@ -182,6 +183,52 @@ class BasicValidationStrategyInitSerializer(ValidationStrategyInitSerializer):
         model = BasicValidationStrategy
         fields = ValidationStrategyInitSerializer.Meta.fields + ('cvFolds', 'dataSplit')
 
+    def validate_dataSplit(self, value):
+        def validate_split_config(config):
+            if not isinstance(config, dict):
+                raise serializers.ValidationError("Split configuration must be a dictionary")
+
+            if "name" not in config:
+                raise serializers.ValidationError("Missing required 'name' key")
+
+            try:
+                module_path, class_name = config["name"].rsplit('.', 1)
+                module = __import__(module_path, fromlist=[class_name])
+                split_class = getattr(module, class_name)
+                if inspect.isabstract(split_class):
+                    raise serializers.ValidationError(f"Split class '{class_name}' cannot be abstract")
+            except (ImportError, AttributeError) as e:
+                raise serializers.ValidationError(f"Invalid split function: {str(e)}")
+
+            valid_params = {
+                param for param in config.keys()
+                if param != "name" and param != "method"
+            }
+
+            for param in valid_params:
+                if isinstance(config[param], dict):
+                    validate_split_config(config[param])
+
+            sig = inspect.signature(split_class.__init__)
+            allowed_params = {
+                param.name for param in sig.parameters.values()
+                if param.name != 'self'
+            }
+
+            invalid_params = valid_params - allowed_params
+            if invalid_params:
+                raise serializers.ValidationError(
+                    f"Invalid parameters for {class_name}: {', '.join(invalid_params)}"
+                )
+
+            return True
+
+        try:
+            validate_split_config(value)
+        except Exception as e:
+            raise serializers.ValidationError(str(e))
+
+        return value
 
 class BasicValidationStrategySerializer(BasicValidationStrategyInitSerializer):
     metrics = serializers.ListSerializer(child=serializers.CharField())
@@ -346,43 +393,3 @@ class ModelSerializer(serializers.HyperlinkedModelSerializer):
         )
         instance.build = validated_data["build"]
         return instance
-
-
-class DataSplitSerializer(serializers.HyperlinkedModelSerializer):
-    class Meta:
-        model = DataSplit
-        fields = ('id',)
-
-
-class RandomSplitSerializer(DataSplitSerializer):
-    class Meta:
-        model = RandomSplit
-        fields = DataSplitSerializer.Meta.fields + ('testFraction', 'seed')
-
-    def validate_seed(self, value):
-        if value < 0 or value > 2 ** 32 - 1:
-            raise serializers.ValidationError("Seed must be between 0 and 2**32 - 1.")
-        return value
-
-    def validate_testFraction(self, value):
-        if value < 0 or value > 1:
-            raise serializers.ValidationError("testFraction must be between 0 and 1.")
-        return value
-
-
-class BootstrapSplitSerializer(DataSplitSerializer):
-    split = serializers.PrimaryKeyRelatedField(many=False, queryset=models.DataSplit.objects.all())
-
-    class Meta:
-        model = models.BootstrapSplit
-        fields = DataSplitSerializer.Meta.fields + ('nBootstraps', 'seed', 'split')
-
-    def validate_seed(self, value):
-        if value < 0 or value > 2 ** 32 - 1:
-            raise serializers.ValidationError("Seed must be between 0 and 2**32 - 1.")
-        return value
-
-    def validate_nBootstraps(self, value):
-        if value < 1:
-            raise serializers.ValidationError("nBootstraps must be greater than 0.")
-        return value

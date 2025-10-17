@@ -1,6 +1,4 @@
-
 from abc import ABC
-import importlib
 from genui.utils.inspection import findSubclassByID, importFromPackage
 from genui.qsar import models
 from genui.utils.inspection import get_default_params
@@ -42,12 +40,6 @@ class EmbeddingCalculator(ABC):
             ret.save()
 
         return ret
-
-
-class ScaffoldCalculator(EmbeddingCalculator):
-    name = None
-    module = importlib.import_module("qsprpred.data.chem.scaffolds")
-    _model = models.ScaffoldCalculator
 
 
 class EmbeddingBuilderMixIn:

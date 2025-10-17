@@ -25,8 +25,6 @@ def setup(*args, **kwargs):
             models.ModelPerformance,
             models.ModelPerformanceNN,
             models.ModelPerformanceCV,
-            models.DataSplit,
-            models.RandomSplit,
             models.HyperparameterOptimizationStrategy,
             models.GridSearchOptimization,
             models.OptunaOptimization,

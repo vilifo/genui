@@ -17,8 +17,8 @@ from genui.utils.extensions.tasks.utils import runTask
 from genui.accounts.serializers import FilterToUserMixIn
 from genui.projects.serializers import FilterToProjectMixIn
 from genui.utils.pagination import GenuiPagination
-from genui.models.models import ModelFile, ModelPerformance, Algorithm, Model, DataSplit
-from genui.models.serializers import ModelFileSerializer, ModelPerformanceSerializer, AlgorithmSerializer, DataSplitSerializer
+from genui.models.models import ModelFile, ModelPerformance, Algorithm, Model
+from genui.models.serializers import ModelFileSerializer, ModelPerformanceSerializer, AlgorithmSerializer
 
 
 class PerformancePagination(GenuiPagination):
@@ -63,27 +63,6 @@ class AlgorithmViewSet(
 ):
     queryset = Algorithm.objects.all()
     serializer_class = AlgorithmSerializer
-
-
-class DataSplitViewSet(
-    mixins.ListModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.CreateModelMixin,
-    viewsets.GenericViewSet
-):
-    queryset = DataSplit.objects.all()
-    serializer_class = DataSplitSerializer
-
-    def get_serializer_class(self):
-        if self.action == 'create':
-            resource_type = self.request.data.get('resourcetype', None)
-            if resource_type == 'RandomSplit':
-                from genui.models.serializers import RandomSplitSerializer
-                return RandomSplitSerializer
-            elif resource_type == 'BootstrapSplit':
-                from genui.models.serializers import BootstrapSplitSerializer
-                return BootstrapSplitSerializer
-        return super().get_serializer_class()
 
 
 class ModelPerformanceListView(

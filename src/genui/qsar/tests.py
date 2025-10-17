@@ -12,7 +12,7 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from genui.compounds.extensions.chembl.tests import CompoundsMixIn
 from genui.compounds.models import ActivityTypes, ActivityUnits
 from genui.models.models import ModelPerformance, Algorithm, AlgorithmMode, ModelFile, \
-    BasicValidationStrategy, RandomSplit, MetricCurvePoint
+    BasicValidationStrategy, MetricCurvePoint
 from genui.qsar.models import QSARModel, ModelActivitySet
 from .genuimodels import builders
 
@@ -84,10 +84,7 @@ class QSARModelInit(CompoundsMixIn):
         if not metrics:
             metrics = ["matthews_corrcoef", "roc_curve"]
         if not dataSplit:
-            dataSplit = {"name": "RandomSplit",
-                         "testFraction": 0.2,
-                         "seed": 42,
-                         }
+            dataSplit = {"name": "qsprpred.data.sampling.splits.RandomSplit", "test_fraction": 0.2, "seed": 42}
         if not hyperParamOptStrategies:
             hyperParamOptStrategies = []
 
@@ -319,13 +316,14 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         model = self.createTestQSARModel()
 
         # Add a second validation strategy
-        randomSplit = RandomSplit.objects.get_or_create(
-            testFraction=0.2
-        )[0]
+        ds = {"name": "qsprpred.data.sampling.splits.RandomSplit",
+              "test_fraction": 0.2,
+              "seed": 42,
+              }
         second_strategy = BasicValidationStrategy.objects.create(
             trainingStrategy=model.trainingStrategy,
             cvFolds=5,
-            dataSplit=randomSplit,
+            dataSplit=ds,
         )
         second_strategy.metrics = ["r2", "mean_squared_error"]
         model.trainingStrategy.validationStrategies.add(second_strategy)
@@ -350,7 +348,7 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
         model = self.createTestQSARModel()
         validation_strategy = model.trainingStrategy.validationStrategies.first()
         self.assertEqual(validation_strategy.cvFolds, 3)
-        self.assertEqual(validation_strategy.dataSplit.testFraction, 0.2)
+        self.assertEqual(validation_strategy.dataSplit["test_fraction"], 0.2)
         self.assertEqual(set(validation_strategy.metrics), set(["matthews_corrcoef", "roc_curve"]))
 
     def test_update_validation_strategy(self):
@@ -389,15 +387,14 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
     def test_change_data_split(self):
         model = self.createTestQSARModel()
         validation_strategy = model.trainingStrategy.validationStrategies.first()
-        validation_strategy.dataSplit.delete()
-        new_split = RandomSplit.objects.create(
-            testFraction=0.3,
-            seed=314,
-        )
+        new_split = {"name": "qsprpred.data.sampling.splits.RandomSplit",
+                     "test_fraction": 0.3,
+                     "seed": 69,
+                     }
         validation_strategy.dataSplit = new_split
         validation_strategy.save()
-        self.assertEqual(model.trainingStrategy.validationStrategies.first().dataSplit.testFraction, 0.3)
-        self.assertEqual(model.trainingStrategy.validationStrategies.first().dataSplit.seed, 314)
+        self.assertEqual(model.trainingStrategy.validationStrategies.first().dataSplit["test_fraction"], 0.3)
+        self.assertEqual(model.trainingStrategy.validationStrategies.first().dataSplit["seed"], 69)
 
     def test_qsprpred_fingerprints(self):
         fingerprints = [
@@ -511,39 +508,30 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
             "nTrials": 10,
         }])
 
-    def test_gbmt_random_and_scaffold_splits(self):
-        scaffold = {"name": "BemisMurckoRDKit"}
-        splits = [
-            {"name": "GBMTRandomSplit", "testFraction":0.2, "nInitialClusters":10, "seed":42},
-            {"name": "ScaffoldSplit", "scaffold":scaffold, "testFraction": 0.2},
-        ]
-        for s in splits:
-            self.createTestQSARModel(dataSplit=s)
-
     def test_multiple_validation_strategies_truly(self):
         validation_strategies = [
             {
                 "resourcetype": "BasicValidationStrategy",
-                "dataSplit": {"name": "RandomSplit",
-                         "testFraction": 0.2,
-                         "seed": 42,
-                         },
+                "dataSplit": {"name": "qsprpred.data.sampling.splits.RandomSplit",
+                              "test_fraction": 0.2,
+                              "seed": 42,
+                              },
                 "cvFolds": 3,
                 "metrics": ["matthews_corrcoef"]
             },
             {
                 "resourcetype": "BasicValidationStrategy",
-                "dataSplit": {"name": "RandomSplit",
-                         "testFraction": 0.25,
-                         "seed": 111,
-                         },
+                "dataSplit": {"name": "qsprpred.data.sampling.splits.RandomSplit",
+                              "test_fraction": 0.25,
+                              "seed": 111,
+                              },
                 "cvFolds": 5,
                 "metrics": ["matthews_corrcoef", "accuracy"]
             }
         ]
         model = self.createTestQSARModel(validationStrategies=validation_strategies)
 
-    def test_all_parameters_default_value(self): # GUI creates a problem with default values, Here's an example
+    def test_all_parameters_default_value(self):  # GUI creates a problem with default values, Here's an example
         model = self.createTestQSARModel(
             parameters={"alg": "RandomForestClassifier",
                         "parameters": json.dumps({"n_estimators": 100,
@@ -559,8 +547,73 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
                                                   "class_weight": "balanced",
                                                   "ccp_alpha": 0.0,
                                                   "max_samples": 0.001})
-                        },)
+                        }, )
 
     def test_all_metric_curves(self):
         model = self.createTestQSARModel(metrics=["roc_curve", "precision_recall_curve", "det_curve"])
         print(MetricCurvePoint.objects.filter(model=model))
+
+    def test_compound_splits(self):
+        metrics = ["roc_curve", "accuracy"]
+        bootstrap_split = {
+            "name": "qsprpred.data.sampling.splits.BootstrapSplit",
+            "split": {"name": "qsprpred.data.sampling.splits.RandomSplit",
+                      "test_fraction": 0.2,
+                      "seed": 42,
+                      },
+            "n_bootstraps": 3
+        }
+        gbmt_data_split = {"name": "qsprpred.data.sampling.splits.GBMTDataSplit",
+                           "clustering":
+                               {"name": "qsprpred.data.chem.clustering.RandomClusters",
+                                }
+                           }
+        scaffold_split = {"name": "qsprpred.data.sampling.splits.ScaffoldSplit",
+                          "scaffold":
+                              {"name": "qsprpred.data.chem.scaffolds.BemisMurcko"
+                               },
+                          "n_folds":2
+                          }
+        cluster_split = {"name": "qsprpred.data.sampling.splits.ClusterSplit",
+                         "clustering":{
+                             "name": "qsprpred.data.chem.clustering.FPSimilarityMaxMinClusters",
+                             "fp_calculator": {
+                                 "name": "qsprpred.data.descriptors.fingerprints.AvalonFP",
+                                 "nBits": 512
+                                }
+                            },
+                         "seed": 123
+                         }
+        validation_strategies = [
+            {
+                "resourcetype": "BasicValidationStrategy",
+                "dataSplit": bootstrap_split,
+                "cvFolds": 3,
+                "metrics": metrics
+            },
+            {
+                "resourcetype": "BasicValidationStrategy",
+                "dataSplit": gbmt_data_split,
+                "cvFolds": 3,
+                "metrics": metrics
+            },
+            {
+                "resourcetype": "BasicValidationStrategy",
+                "dataSplit": scaffold_split,
+                "cvFolds": 3,
+                "metrics": metrics
+            },
+            {
+                "resourcetype": "BasicValidationStrategy",
+                "dataSplit": cluster_split,
+                "cvFolds": 3,
+                "metrics": metrics
+            }
+        ]
+        model = self.createTestQSARModel(validationStrategies=validation_strategies, )
+
+    def test_sklearn_split(self):
+        data_split = {"name": "sklearn.model_selection.ShuffleSplit",
+                      "test_size": 0.2,
+                      }
+        model = self.createTestQSARModel(dataSplit=data_split)

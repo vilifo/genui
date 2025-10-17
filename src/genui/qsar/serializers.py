@@ -5,8 +5,7 @@ from genui.compounds.models import ActivityTypes, ActivitySet, ActivityUnits
 from genui.compounds.serializers import MolSetSerializer, ActivitySetSerializer, ActivityTypeSerializer, \
     ActivityUnitsSerializer
 from genui.models.serializers import TrainingStrategySerializer, ModelSerializer, \
-    TrainingStrategyInitSerializer, BasicValidationStrategy, \
-    DataSplitSerializer
+    TrainingStrategyInitSerializer, BasicValidationStrategy
 from genui.models import models as genui_models
 from . import models
 from .models import EmbeddingCalculator
@@ -17,10 +16,6 @@ class EmbeddingCalculatorSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
         model = models.EmbeddingCalculator
         fields = ('id', 'name', 'arguments')
-
-
-class ScaffoldCalculatorSerializer(EmbeddingCalculatorSerializer):
-    pass
 
 
 class QSARTrainingStrategySerializer(TrainingStrategySerializer):
@@ -86,24 +81,8 @@ class QSARModelInitSerializer(QSARModelSerializer):
         if "trainingStrategy" in initial_data and "validationStrategies" in initial_data["trainingStrategy"]:
             validation_strategies = initial_data["trainingStrategy"]["validationStrategies"]
             for vs in validation_strategies:
-                ds = vs["dataSplit"]
-                if isinstance(ds, dict):
-                    name = ds.pop("name")
-                    try:
-                        cls = getattr(models, name)
-                    except AttributeError:
-                        try:
-                            cls = getattr(genui_models, name)
-                        except AttributeError:
-                            raise serializers.ValidationError(f"Data split {name} not found.")
-                    if "scaffold" in ds:
-                        sid, _ = models.ScaffoldCalculator.objects.get_or_create(**ds["scaffold"])
-                        ds["scaffold"] = sid
-                    did, _ = cls.objects.get_or_create(**ds)
-                    vs["dataSplit"] = did.id
-                else:
-                    vs["dataSplit"] = ds
-                    # TODO NOW: add warning if metrics are not unique, convert to set and back to list
+                if "metrics" in vs:
+                    vs["metrics"] = list(set(vs["metrics"])) # deduplicate metrics
             self.initial_data["trainingStrategy"]["validationStrategies"] = validation_strategies
 
         ret = super().is_valid(raise_exception=raise_exception)
@@ -223,132 +202,6 @@ class ModelActivitySetSerializer(ActivitySetSerializer):
         model = models.ModelActivitySet
         fields = ActivitySetSerializer.Meta.fields + ('model', 'taskID')
         read_only_fields = ActivitySetSerializer.Meta.read_only_fields + ('taskID', 'model', 'project')
-
-
-class TemporalSplitSerializer(DataSplitSerializer):
-    class Meta:
-        model = models.TemporalSplit
-        fields = DataSplitSerializer.Meta.fields + ('timeSplit', 'timeProp')
-
-    def validate_timeSplit(self, value):
-        if value < 0.0 or value > 1.0:
-            raise serializers.ValidationError("Time split must be between 0 and 1.")
-        return value
-
-
-class GBMTDataSplitSerializer(DataSplitSerializer):
-    clustering = serializers.PrimaryKeyRelatedField(required=False, queryset=models.MoleculeClusters.objects.all())
-    testFraction = serializers.FloatField(required=False)  # mutually exclusive with nFolds
-
-    # nFolds = serializers.IntegerField(required=False)
-
-    class Meta:
-        model = models.GBMTDataSplit
-        fields = DataSplitSerializer.Meta.fields + ('clustering', 'testFraction')
-
-    def validate_testFraction(self, value):
-        if value < 0.0 or value > 1.0:
-            raise serializers.ValidationError("Test fraction must be between 0 and 1.")
-        return value
-
-
-class GBMTRandomSplitSerializer(GBMTDataSplitSerializer):
-    seed = serializers.IntegerField(required=False, default=42)
-    nInitialClusters = serializers.IntegerField(required=False, min_value=10)
-
-    class Meta:
-        model = models.GBMTRandomSplit
-        fields = GBMTDataSplitSerializer.Meta.fields + ('seed', 'nInitialClusters')
-
-    def validate_seed(self, value):
-        if value < 0 or value > 2**32 - 1:
-            raise serializers.ValidationError("Seed must be between 0 and 2**32 - 1.")
-        return value
-
-
-class ScaffoldSplitSerializer(GBMTDataSplitSerializer):
-    scaffold = serializers.PrimaryKeyRelatedField(many=False, queryset=models.ScaffoldCalculator.objects.all())
-
-    class Meta:
-        model = models.ScaffoldSplit
-        fields = GBMTDataSplitSerializer.Meta.fields + ('scaffold',)
-
-
-class ClusterSerializer(GBMTDataSplitSerializer):
-    seed = serializers.IntegerField(required=False, default=42)
-
-    class Meta:
-        model = models.ClusterSplit
-        fields = GBMTDataSplitSerializer.Meta.fields + ('seed',)
-
-    def validate_seed(self, value):
-        if value < 0 or value > 2**32 - 1:
-            raise serializers.ValidationError("Seed must be between 0 and 2**32 - 1.")
-        return value
-
-
-class MoleculeClustersSerializer(serializers.HyperlinkedModelSerializer):
-    class Meta:
-        model = models.MoleculeClusters
-        fields = ('id',)
-
-
-class RandomClustersSerializer(MoleculeClustersSerializer):
-    seed = serializers.IntegerField(required=False, default=42)
-    nClusters = serializers.IntegerField(required=False, min_value=10)
-
-    class Meta:
-        model = models.RandomClusters
-        fields = MoleculeClustersSerializer.Meta.fields + ('seed', 'nClusters')
-
-    def validate_seed(self, value):
-        if value < 0 or value > 2 ** 32 - 1:
-            raise serializers.ValidationError("Seed must be between 0 and 2**32 - 1.")
-        return value
-
-
-class ScaffoldClustersSerializer(MoleculeClustersSerializer):
-    scaffold = serializers.PrimaryKeyRelatedField(required=True, many=False,
-                                                  queryset=models.ScaffoldCalculator.objects.all())
-
-    class Meta:
-        model = models.ScaffoldClusters
-        fields = MoleculeClustersSerializer.Meta.fields + ('scaffold',)
-
-
-class FPSimilarityClustersSerializer(MoleculeClustersSerializer):
-    FPCalculator = serializers.PrimaryKeyRelatedField(required=True, many=False,
-                                                      queryset=models.EmbeddingCalculator.objects.all())
-
-    class Meta:
-        model = models.FPSimilarityClusters
-        fields = MoleculeClustersSerializer.Meta.fields + ('FPCalculator',)
-
-
-class FPSimilarityMaxMinClustersSerializer(FPSimilarityClustersSerializer):
-    seed = serializers.IntegerField(required=False)
-    nClusters = serializers.IntegerField(required=False, min_value=10)
-
-    class Meta:
-        model = models.FPSimilarityMaxMinClusters
-        fields = FPSimilarityClustersSerializer.Meta.fields + ('seed', 'nClusters')
-
-    def validate_seed(self, value):
-        if value < 0 or value > 2**32 - 1:
-            raise serializers.ValidationError("Seed must be between 0 and 2**32 - 1.")
-        return value
-
-class FPSimilarityLeaderPickerClustersSerializer(FPSimilarityClustersSerializer):
-    similarityThreshold = serializers.FloatField(required=True)
-
-    class Meta:
-        model = models.FPSimilarityLeaderPickerClusters
-        fields = FPSimilarityClustersSerializer.Meta.fields + ('similarityThreshold',)
-
-    def validate_similarityThreshold(self, value):
-        if value < 0.0 or value > 1.0:
-            raise serializers.ValidationError("Similarity threshold must be between 0 and 1.")
-        return value
 
 
 class QSPRPredSklearnModelSerializer(serializers.Serializer):

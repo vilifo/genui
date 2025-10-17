@@ -1,8 +1,11 @@
+import inspect
+
 from sklearn import metrics as sklearn_metrics
 from qsprpred.models import SklearnMetrics
 from qsprpred.models.monitors import BaseMonitor
 from genui.utils.inspection import camel_to_snake, snake_to_camel
 import traceback
+import importlib
 from genui.models import models
 import re
 
@@ -119,3 +122,24 @@ class CurveMetrics(SklearnMetrics):
 
     def _scorerFunc(self, y_true, y_pred):
         return y_true, y_pred
+
+
+def build_split_instance(obj, dataset=None):
+    if isinstance(obj, dict) and "name" in obj:
+        # Extract and import the function/class
+        full_name = obj["name"]
+        module_name, func_name = full_name.rsplit(".", 1)
+        module = importlib.import_module(module_name)
+        func = getattr(module, func_name)
+
+        # Prepare keyword arguments
+        kwargs = {
+            k: build_split_instance(v) if isinstance(v, dict) else v
+            for k, v in obj.items() if k != "name"
+        }
+        if dataset is not None and "dataset" in inspect.signature(func).parameters:
+            kwargs["dataset"] = dataset
+
+        return func(**kwargs)
+    else:
+        return obj

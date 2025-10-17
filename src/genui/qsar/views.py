@@ -9,7 +9,7 @@ from rest_framework import serializers as rest_serializers
 
 from genui.models import models as genui_models
 from genui.models.serializers import HyperparameterOptimizationStrategySerializer
-from genui.models.views import ModelViewSet, AlgorithmViewSet, MetricsViewSet, PredictMixIn, DataSplitViewSet
+from genui.models.views import ModelViewSet, AlgorithmViewSet, MetricsViewSet, PredictMixIn
 from genui.models.genuimodels.bases import Algorithm
 from genui.qsar.genuimodels.builders import BasicQSARModelBuilder
 from genui.qsar.genuimodels.bases import EmbeddingBuilderMixIn, EmbeddingCalculator
@@ -162,68 +162,6 @@ class QSARAlgorithmViewSet(AlgorithmViewSet):
     def get_queryset(self):
         current = super().get_queryset()
         return current.filter(validModes__name__in=(Algorithm.CLASSIFICATION, Algorithm.REGRESSION)).distinct('id')
-
-
-class QSARDataSplitViewSet(DataSplitViewSet):
-    @swagger_auto_schema(
-        methods=['GET']
-        , responses={
-            200: "List of all available datasplit types",
-        }
-    )
-    @action(detail=False, methods=['get'], url_path='list')
-    def list_all(self, request):
-        from django.contrib.contenttypes.models import ContentType
-        from genui.models.models import DataSplit
-
-        datasplit_types = []
-        for ct in ContentType.objects.filter(app_label__in=['models', 'qsar']):
-            model_class = ct.model_class()
-            if model_class and issubclass(model_class, DataSplit) and model_class != DataSplit:
-                datasplit_types.append(model_class.__name__)
-
-        return Response(datasplit_types)
-
-    @swagger_auto_schema(
-        methods=['GET']
-        , responses={
-            200: "Default parameters for the datasplit type",
-        }
-    )
-    @action(detail=False, methods=['get'], url_path='(?P<name>[^/.]+)/params')
-    def params_by_name(self, request, name=None):
-        from django.contrib.contenttypes.models import ContentType
-        from genui.models.models import DataSplit
-
-        model_class = None
-        for ct in ContentType.objects.filter(app_label__in=['models', 'qsar']):
-            cls = ct.model_class()
-            if cls and issubclass(cls, DataSplit) and cls.__name__ == name:
-                model_class = cls
-                break
-
-        if not model_class:
-            return Response({"error": f"Datasplit type not found: {name}"}, status=status.HTTP_404_NOT_FOUND)
-
-        try:
-            module_name = model_class.__module__
-            class_name = model_class.__name__
-            params = get_default_params_django(class_name, module_name)
-            return Response(params)
-        except Exception as e:
-            return Response({"error": f"Failed to get parameters: {str(e)}"},
-                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    @swagger_auto_schema(
-        methods=['GET']
-        , responses={
-            200: "List of all available scaffold calculators",
-        }
-    )
-    @action(detail=False, methods=['get'], url_path='scaffolds/list')
-    def list_scaffolds(self, request):
-        scaffolds = models.ScaffoldCalculator.objects.values_list('name', flat=True)
-        return Response(list(scaffolds))
 
 
 class QSARMetricsViewSet(MetricsViewSet):
