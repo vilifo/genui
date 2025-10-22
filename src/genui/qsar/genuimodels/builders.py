@@ -74,7 +74,7 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
                 if self.hyper_param_opt:
                     metrics_aggregator.perfClass = core_models.HyperparameterOptimizationPerformance
                     optimizer_class = getattr(qsprpred_models, self.hyper_param_opt.__class__.__name__)
-                    kwargs = {"param_grid": self.hyper_param_opt.searchSpace,
+                    kwargs = {"param_grid": self.search_space,
                               "model_assessor": CrossValAssessor(self.hypo_metric),
                               "score_aggregation": self.hyper_param_aggregator}
                     if "nTrials" in dir(self.hyper_param_opt):

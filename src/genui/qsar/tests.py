@@ -495,14 +495,16 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
     def test_hyperparameter_optimization(self):
         self.createTestQSARModel(hyperParamOptStrategies=[{
             "resourcetype": "GridSearchOptimization",
-            "searchSpace": {"n_estimators": [150, 200], "criterion": ["gini", "entropy", "log_loss"]},
+            "searchSpace": [{"name":"n_estimators", "type":"range", "value":[100, 150, 10]},
+                            {"name":"max_depth", "type":"range", "value":[5, 10]},
+                            {"name":"criterion", "type":"sequence", "value":["gini", "entropy", "log_loss"]}],
             "metric": "f1",
             "scoreAggregation": "mean"
         }], )
         self.createTestQSARModel(hyperParamOptStrategies=[{
             "resourcetype": "OptunaOptimization",
-            "searchSpace": {"n_estimators": ["int", 100, 250],
-                            "criterion": ["categorical", ["gini", "entropy", "log_loss"]]},
+            "searchSpace": [{"name":"n_estimators", "type":"int", "value":[100, 250]},
+                            {"name":"criterion", "type":"categorical", "value":["gini", "entropy", "log_loss"]}],
             "metric": "f1",
             "scoreAggregation": "mean",
             "nTrials": 10,

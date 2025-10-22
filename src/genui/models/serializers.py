@@ -1,4 +1,6 @@
 import inspect
+from abc import abstractmethod
+
 from rest_framework import serializers
 from rest_polymorphic.serializers import PolymorphicSerializer
 
@@ -79,15 +81,63 @@ class HyperparameterOptimizationStrategyInitSerializer(HyperparameterOptimizatio
     scoreAggregation = serializers.CharField()
     searchSpace = serializers.JSONField()
 
+    allowed_types = []
+
     class Meta:
         model = HyperparameterOptimizationStrategy
         fields = tuple(x for x in HyperparameterOptimizationStrategySerializer.Meta.fields if x != 'trainingStrategy')
+
+    def validate_searchSpace_param(self, value):
+        if "name" not in value or "type" not in value or "value" not in value:
+            raise serializers.ValidationError(f"Invalid parameter in search space: {value}."
+                                              f" Must contain 'name', 'type' and 'value'.")
+        if value["type"] not in self.allowed_types:
+            raise serializers.ValidationError(f"Invalid type for parameter {value['name']}: {value['type']}. "
+                                              f" Can be one of: {self.allowed_types}.")
+        return value["name"], value["type"], value["value"]
 
 
 class GridSearchOptimizationInitSerializer(HyperparameterOptimizationStrategyInitSerializer):
     class Meta:
         model = GridSearchOptimization
         fields = HyperparameterOptimizationStrategyInitSerializer.Meta.fields
+
+    allowed_types = ["range", "sequence"]
+
+    def validate_searchSpace(self, value):
+        for param in value:
+            param_name, param_type, param_value = self.validate_searchSpace_param(param)
+            if param_type == "sequence":
+                if not isinstance(param_value, list):
+                    raise serializers.ValidationError(
+                        f"Invalid value of parameter {param_name} in search space: {param_value}."
+                        f" Must be a list of values")
+                if len(param_value) != len(set(param_value)):
+                    raise serializers.ValidationError(
+                        f"Invalid value of parameter {param_name} in search space: {param_value}."
+                        f" List of values must not contain duplicates")
+            elif param_type == "range":
+                if not 2 <= len(param_value) <= 3:
+                    raise serializers.ValidationError(
+                        f"Invalid value of parameter {param_name} in search space: {param_value}."
+                        f" Must be a list of two ot three values")
+                if len(param_value) == 2:
+                    start, stop = param_value
+                else:
+                    start, stop, step = param_value
+                    if not isinstance(step, int) or step <= 0:
+                        raise serializers.ValidationError(
+                            f"Invalid value of parameter {param_name} in search space: {param_value}."
+                            f" Step must be positive non-zero integer")
+                if not isinstance(start, int) or not isinstance(stop, int):
+                    raise serializers.ValidationError(
+                        f"Invalid value of parameter {param_name} in search space: {param_value}."
+                        f" Both start and stop must be integers")
+                if start >= stop:
+                    raise serializers.ValidationError(
+                        f"Invalid value of parameter {param_name} in search space: {param_value}."
+                        f" Stop must be greater than start.")
+        return value
 
 
 class GridSearchOptimizationSerializer(GridSearchOptimizationInitSerializer):
@@ -97,39 +147,30 @@ class GridSearchOptimizationSerializer(GridSearchOptimizationInitSerializer):
 
 
 class OptunaOptimizationInitSerializer(HyperparameterOptimizationStrategyInitSerializer):
-    nTrials = serializers.IntegerField()
+    nTrials = serializers.IntegerField(min_value=1)
+
+    allowed_types = ["int", "float", "categorical"]
 
     class Meta:
         model = OptunaOptimization
         fields = HyperparameterOptimizationStrategyInitSerializer.Meta.fields + ('nTrials',)
 
-    def validate_nTrials(self, value):
-        if value < 1:
-            raise serializers.ValidationError("nTrials must be greater than 0.")
-        return value
-
     def validate_searchSpace(self, value):
-        def check_type(type_):
-            if type_ not in ['int', 'float']:
-                raise serializers.ValidationError("type must be int or float.")
-
         for param in value:
-            if len(param) == 3:
-                type_, min_, max_ = param
-                check_type(type_)
-                if type_ == 'int' and min_ >= max_:
-                    if not isinstance(min_, int) or not isinstance(max_, int):
-                        raise serializers.ValidationError("min and max must be integers for int type.")
-                    raise serializers.ValidationError("min must be less than max for int type.")
-                elif type_ == 'float' and min_ >= max_:
-                    if not isinstance(min_, float) or not isinstance(max_, float):
-                        raise serializers.ValidationError("min and max must be floats for float type.")
-                    raise serializers.ValidationError("min must be less than max for float type.")
-            elif len(param) == 2:
-                type_, params = param
-                if type_ != 'categorical':
-                    raise serializers.ValidationError("type must be categorical when specifying a list of choices.")
-
+            param_name, param_type, param_value = self.validate_searchSpace_param(param)
+            if param_type in ["int", "float"]:
+                min_, max_ = param_value
+                type_ = {"int": int, "float": float}[param_type]
+                if not isinstance(min_, type_) or not isinstance(max_, type_):
+                    raise serializers.ValidationError(f"{param_name} in search space:"
+                                                      f" Both values must be {param_type}.")
+                elif min_ >= max_:
+                    raise serializers.ValidationError(f"{param_name} in search space:"
+                                                      " First value must be less than the second.")
+            elif param_type == "categorical":
+                if len(param_value) > len(set(param_value)):
+                    raise serializers.ValidationError(f"{param_name} in search space:"
+                                                      f" List of values must not contain duplicates")
         return value
 
 
@@ -229,6 +270,7 @@ class BasicValidationStrategyInitSerializer(ValidationStrategyInitSerializer):
             raise serializers.ValidationError(str(e))
 
         return value
+
 
 class BasicValidationStrategySerializer(BasicValidationStrategyInitSerializer):
     metrics = serializers.ListSerializer(child=serializers.CharField())

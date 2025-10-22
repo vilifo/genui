@@ -254,6 +254,7 @@ class ModelBuilder(ABC):
         if self.hyper_param_opt:
             self.hyper_param_aggregator = getattr(np, self.hyper_param_opt.scoreAggregation)
             self.hypo_metric = self.getMetricFunction(self.hyper_param_opt.metric)
+            self.search_space = self.prepare_seachSpace(self.hyper_param_opt)
         self.progress = progress
         self.errors = []
 
@@ -298,6 +299,22 @@ class ModelBuilder(ABC):
             )
         path = self.instance.modelFile.path
         self.model.serialize(path)
+
+    def prepare_seachSpace(self, hyper_param_opt):
+        orig_search_space = hyper_param_opt.searchSpace
+        search_space = {}
+        for param in orig_search_space:
+            param_name = param['name']
+            param_type = param['type']
+            param_value = param['value']
+            if param_type == 'range':
+                param_value = range(*param_value)
+            elif param_type == 'int' or param_type == 'float':
+                param_value = [param_type, *param_value]
+            elif param_type == 'categorical':
+                param_value = [param_type, param_value]
+            search_space[param_name] = param_value
+        return search_space
 
 
 class ProgressMixIn:
