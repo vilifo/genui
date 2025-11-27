@@ -161,10 +161,9 @@ class OptunaOptimizationInitSerializer(HyperparameterOptimizationStrategyInitSer
             if param_type in ["int", "float"]:
                 min_, max_ = param_value
                 type_ = {"int": int, "float": float}[param_type]
-                if not isinstance(min_, type_) or not isinstance(max_, type_):
-                    raise serializers.ValidationError(f"{param_name} in search space:"
-                                                      f" Both values must be {param_type}.")
-                elif min_ >= max_:
+                min_ = type_(min_)
+                max_ = type_(max_)
+                if min_ >= max_:
                     raise serializers.ValidationError(f"{param_name} in search space:"
                                                       " First value must be less than the second.")
             elif param_type == "categorical":
@@ -381,13 +380,6 @@ class ModelSerializer(serializers.HyperlinkedModelSerializer):
                 raise serializers.ValidationError(
                     "Only one validation strategy is allowed when using hyperparameter optimization.")
         return ret
-
-    # def validate(self, attrs):
-    #     if "modelFile" in attrs and "validationStrategy" in attrs:
-    #         raise ValidationError("If 'modelFile' is present, 'validationStrategy' field should be empty.")
-    #     if "modelFile" not in attrs and "validationStrategy" not in attrs:
-    #         raise ValidationError("You have to specify 'modelFile' if you omit 'validationStrategy'.")
-    #     return super().validate(attrs)
 
     @staticmethod
     def saveParameters(strat_instance: TrainingStrategy, strat_data):

@@ -68,6 +68,7 @@ class QSARModelInitSerializer(QSARModelSerializer):
 
     def is_valid(self, raise_exception=True):
         initial_data = self.initial_data
+        print(initial_data)
         if "trainingStrategy" in initial_data and "embeddings" in initial_data["trainingStrategy"]:
             embeddings = []
             for emb in initial_data["trainingStrategy"]["embeddings"]:
@@ -125,6 +126,10 @@ class QSARModelInitSerializer(QSARModelSerializer):
                 for m in validation["metrics"]:
                     if not m in METRICS[data["trainingStrategy"]["mode"].name]:
                         raise serializers.ValidationError(f"Metric {m} is not a valid metric.")
+                ds = validation["dataSplit"]
+                for arg in ds:
+                    if ds[arg] is None:
+                        serializers.ValidationError(f"{arg} in data split cannot be None.")
 
         if "hyperParamOptStrategies" in tr_strat_data and len(tr_strat_data["hyperParamOptStrategies"]) > 0:
             if ("validationStrategies" in tr_strat_data

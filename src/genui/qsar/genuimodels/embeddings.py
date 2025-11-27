@@ -41,10 +41,7 @@ globals().update({
     for name in fingerprint_types
 })
 
-descriptor_set_types = [
-    name for name in dir(DescriptorSet.module)
-    if not name.startswith('_')
-]
+descriptor_set_types = ['DrugExPhyschem', 'RDKitDescs',]
 
 globals().update({
     name: create_descriptor_set_class(name)

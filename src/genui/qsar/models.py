@@ -1,5 +1,4 @@
 from django.db import models
-from polymorphic.models import PolymorphicModel
 
 from genui.compounds.models import MolSet, ActivitySet, Activity, ActivityTypes, ActivityUnits
 from genui.models.models import Model, TrainingStrategy, ImportableModelComponent

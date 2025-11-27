@@ -48,14 +48,6 @@ class FilterToModelMixin:
             return queryset
 
 
-class MetricsViewSet(
-    mixins.ListModelMixin,
-    mixins.RetrieveModelMixin,
-    viewsets.GenericViewSet
-):
-    pass
-
-
 class AlgorithmViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,

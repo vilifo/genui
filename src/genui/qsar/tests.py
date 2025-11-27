@@ -495,16 +495,16 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
     def test_hyperparameter_optimization(self):
         self.createTestQSARModel(hyperParamOptStrategies=[{
             "resourcetype": "GridSearchOptimization",
-            "searchSpace": [{"name":"n_estimators", "type":"range", "value":[100, 150, 10]},
-                            {"name":"max_depth", "type":"range", "value":[5, 10]},
-                            {"name":"criterion", "type":"sequence", "value":["gini", "entropy", "log_loss"]}],
+            "searchSpace": [{"name": "n_estimators", "type": "range", "value": [100, 150, 10]},
+                            {"name": "max_depth", "type": "range", "value": [5, 10]},
+                            {"name": "criterion", "type": "sequence", "value": ["gini", "entropy", "log_loss"]}],
             "metric": "f1",
             "scoreAggregation": "mean"
         }], )
         self.createTestQSARModel(hyperParamOptStrategies=[{
             "resourcetype": "OptunaOptimization",
-            "searchSpace": [{"name":"n_estimators", "type":"int", "value":[100, 250]},
-                            {"name":"criterion", "type":"categorical", "value":["gini", "entropy", "log_loss"]}],
+            "searchSpace": [{"name": "n_estimators", "type": "int", "value": [100, 250]},
+                            {"name": "criterion", "type": "categorical", "value": ["gini", "entropy", "log_loss"]}],
             "metric": "f1",
             "scoreAggregation": "mean",
             "nTrials": 10,
@@ -574,16 +574,16 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
                           "scaffold":
                               {"name": "qsprpred.data.chem.scaffolds.BemisMurcko"
                                },
-                          "n_folds":2
+                          "n_folds": 2
                           }
         cluster_split = {"name": "qsprpred.data.sampling.splits.ClusterSplit",
-                         "clustering":{
+                         "clustering": {
                              "name": "qsprpred.data.chem.clustering.FPSimilarityMaxMinClusters",
                              "fp_calculator": {
                                  "name": "qsprpred.data.descriptors.fingerprints.AvalonFP",
                                  "nBits": 512
-                                }
-                            },
+                             }
+                         },
                          "seed": 123
                          }
         validation_strategies = [

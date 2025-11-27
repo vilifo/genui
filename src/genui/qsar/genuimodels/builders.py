@@ -110,9 +110,9 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
         self.model.model.fitDataset(dataset, save_model=False)
 
         # Final validation (optional, as it's not truly a validation)
-        y_predicted = self.model.predict(dataset.X)
+        # y_predicted = self.model.predict(dataset.X)
         # for validation in self.validations:
-        self.validate(dataset.y, y_predicted)  # Not a validation
+        # self.validate(dataset.y, y_predicted)  # Not a validation
 
         self.recordProgress()
         self.saveFile()

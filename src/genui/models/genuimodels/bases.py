@@ -210,22 +210,10 @@ class ModelBuilder(ABC):
         )
 
     def getMetricFunction(self, name):
-        mode = self.training.mode
-        if mode.name == Algorithm.CLASSIFICATION:
-            if name in dir(classification):
-                return getattr(classification, name)
-            else:
-                if "curve" in name:
-                    return CurveMetrics(name)
-                else:
-                    return scikit_learn.SklearnMetrics(name)
-        elif mode.name == Algorithm.REGRESSION:
-            if name in dir(regression):
-                return getattr(regression, name)
-            else:
-                return scikit_learn.SklearnMetrics(name)
+        if "curve" in name:
+            return CurveMetrics(name)
         else:
-            raise Exception(f"Invalid mode for metric function: {mode.name}")
+            return scikit_learn.SklearnMetrics(name)
 
     def __init__(
             self,
@@ -377,9 +365,9 @@ class ValidationMixIn:
             return self._saveMetricValue(metric, y_true, y_predicted, perfClass, *args, **kwargs)
 
     def saveCurvePoints(self, metric, y_true, y_predicted, perfClass=models.ModelPerformance, *args, **kwargs):
-        ind, dep, _ = metric(y_true, y_predicted, True)
+        dependent, independent, _ = metric(y_true, y_predicted, True)
         perf_object = self._saveMetricValue(metric, y_true, y_predicted, perfClass, *args, **kwargs)
-        for ind, dep in zip(ind, dep):
+        for ind, dep in zip(independent, dependent):
             models.MetricCurvePoint.objects.create(
                 metric=metric.name,
                 model=self.instance,

@@ -9,7 +9,6 @@ from .apps import GeneratorsConfig
 router = routers.DefaultRouter()
 router.register(r'all', views.GeneratorViewSet, basename='generator')
 router.register(r'algorithms', views.GeneratorAlgorithmViewSet, basename='generator_algorithm')
-router.register(r'metrics', views.GeneratorMetricsViewSet, basename='generator_metric')
 
 urlpatterns = [
     path('', include(router.urls)),

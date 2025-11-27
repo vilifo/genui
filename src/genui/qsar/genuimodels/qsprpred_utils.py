@@ -69,12 +69,13 @@ class MetricsAggregator:
             kwargs["validationStrategyIndex"] = self.monitor.validation_index
 
         for metric in self.metricFunctions[self.monitor.validation_index]:
-            try:
-                self.builder.saveMetricValue(metric, y_true, y_pred, self.perfClass, **kwargs)
-            except Exception as exp:
-                print("Failed to obtain values for metric: ", metric.name)
-                self.builder.errors.append(exp)
-                traceback.print_exc()
+            if metric != self.validation_metric:
+                try:
+                    self.builder.saveMetricValue(metric, y_true, y_pred, self.perfClass, **kwargs)
+                except Exception as exp:
+                    print("Failed to obtain values for metric: ", metric.name)
+                    self.builder.errors.append(exp)
+                    traceback.print_exc()
         return self.builder.saveMetricValue(self.validation_metric, y_true, y_pred, self.perfClass, **kwargs).value
 
 

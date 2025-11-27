@@ -1,15 +1,15 @@
 import traceback
-
 from django.conf import settings
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import viewsets, mixins, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import serializers as rest_serializers
 
 from genui.models import models as genui_models
 from genui.models.serializers import HyperparameterOptimizationStrategySerializer
-from genui.models.views import ModelViewSet, AlgorithmViewSet, MetricsViewSet, PredictMixIn
+from genui.models.views import ModelViewSet, AlgorithmViewSet, PredictMixIn
 from genui.models.genuimodels.bases import Algorithm
 from genui.qsar.genuimodels.builders import BasicQSARModelBuilder
 from genui.qsar.genuimodels.bases import EmbeddingBuilderMixIn, EmbeddingCalculator
@@ -20,7 +20,7 @@ from .tasks import buildQSARModel, predictWithQSARModel
 from genui.utils.extensions.tasks.utils import runTask
 from genui import celery_app
 from genui.utils.inspection import get_default_params, get_default_params_django, sklearn_regressors, \
-    sklearn_classifiers, SKLEARN_MODELS, SKLEARN_MODELS_PARAMS, getSubclassesFromModule
+    sklearn_classifiers, SKLEARN_MODELS, SKLEARN_MODELS_PARAMS, getSubclassesFromModule, METRICS, DATA_SPLITS, SCAFFOLDS
 
 
 class QSARModelViewSet(PredictMixIn, ModelViewSet):
@@ -121,30 +121,6 @@ class EmbeddingGroupsViewSet(
         calculators = [c.__name__ for c in calculators if not c.abstract]
         return Response(calculators)
 
-    # @swagger_auto_schema(
-    #     methods=['GET']
-    #     , responses={
-    #         200: "Default parameters for the embedding calculator",
-    #     }
-    # )
-    # @action(detail=True, methods=['get'])
-    # def params(self, request, pk=None):
-    #     try:
-    #         instance = self.get_queryset().get(pk=pk)
-    #     except models.EmbeddingCalculator.DoesNotExist:
-    #         return Response({"error": f"Embedding calculator not found: {pk}"}, status=status.HTTP_404_NOT_FOUND)
-    #
-    #     class_ = EmbeddingBuilderMixIn.findEmbeddingClass(instance.name, instance.corePackage)
-    #     if not class_:
-    #         return Response({"error": f"Embedding class not found for: {instance.name}"},
-    #                         status=status.HTTP_404_NOT_FOUND)
-    #
-    #     calculator = class_(None)
-    #     data = calculator.get_default_parameters()
-    #     if hasattr(calculator, "get_descriptors_names"):
-    #         data["descriptors"] = calculator.get_descriptors_names()
-    #     return Response(data)
-
     @action(detail=False, methods=['get'], url_path='(?P<name>[^/.]+)/arguments')
     def params_by_name(self, request, name=None):
         class_ = EmbeddingBuilderMixIn.findEmbeddingClass(name)
@@ -164,12 +140,58 @@ class QSARAlgorithmViewSet(AlgorithmViewSet):
         return current.filter(validModes__name__in=(Algorithm.CLASSIFICATION, Algorithm.REGRESSION)).distinct('id')
 
 
-class QSARMetricsViewSet(MetricsViewSet):
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def list_metrics(request):
+    return Response(METRICS)
 
-    def get_queryset(self):
-        ret = super().get_queryset()
-        modes = genui_models.AlgorithmMode.objects.filter(name__in=(Algorithm.CLASSIFICATION, Algorithm.REGRESSION))
-        return ret.filter(validModes__in=modes)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def list_metrics_by_mode(request, mode):
+    if mode == Algorithm.REGRESSION:
+        metrics = METRICS[Algorithm.REGRESSION]
+    elif mode == Algorithm.CLASSIFICATION:
+        metrics = METRICS[Algorithm.CLASSIFICATION]
+    else:
+        return Response({"error": f"Mode not found: {mode}"}, status=status.HTTP_404_NOT_FOUND)
+    serializer = rest_serializers.ListSerializer(data=metrics, child=rest_serializers.CharField())
+    serializer.is_valid(raise_exception=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def list_data_splits(request):
+    serializer = rest_serializers.ListSerializer(data=DATA_SPLITS, child=rest_serializers.CharField())
+    serializer.is_valid(raise_exception=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def list_aggregation_functions(request):
+    serializer = rest_serializers.ListSerializer(data=["max", "min", "mean", "sum", "median", "std", "var"], child=rest_serializers.CharField())
+    serializer.is_valid(raise_exception=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def list_scaffolds(request):
+    serializer = rest_serializers.ListSerializer(data=SCAFFOLDS, child=rest_serializers.CharField())
+    serializer.is_valid(raise_exception=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_data_splits_params(request, data_split):
+    module_name, func_name = data_split.rsplit(".", 1)
+    args = get_default_params(func_name, module_name)
+    unwanted_args = ["dataset", "weights"]
+    args = {k:v for k,v in args.items() if k not in unwanted_args}
+    return Response(args)
 
 
 class QSPRPredSklearnModelViewSet(viewsets.ViewSet):

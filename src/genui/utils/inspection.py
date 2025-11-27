@@ -3,6 +3,7 @@ import re
 import pkgutil
 import importlib
 import inspect
+import qsprpred
 import sklearn
 from sklearn.base import RegressorMixin, ClassifierMixin
 from sklearn.utils._param_validation import Interval, StrOptions
@@ -189,7 +190,7 @@ def get_sklearn_models():
     regressors = {}
     classifiers = {}
     search_modules = {"ensemble", "gaussian_process", "kernel_ridge", "linear_model", "neighbors", "neural_network",
-                    "svm", "tree"}
+                      "svm", "tree"}
 
     for _, module_name, _ in pkgutil.walk_packages(sklearn.__path__, prefix="sklearn."):
         try:
@@ -208,17 +209,38 @@ def get_sklearn_models():
 
     return regressors, classifiers
 
-def get_metrics():
-    from qsprpred.models.assessment.metrics import classification
-    from qsprpred.models.assessment.metrics import regression
-    from sklearn.metrics import get_scorer_names
-    cls_metrics = [m for m in dir(classification) if m[0].isupper() and not m.startswith("Calc") and m != "Metric"]
-    reg_metrics = [m for m in dir(regression) if m[0].isupper() and not m.startswith("Calc") and m != "Metric"]
-    cls_metrics = cls_metrics + ["precision_recall_curve", "roc_curve", "det_curve"]
-    metrics = {"classification": cls_metrics + get_scorer_names(), "regression": reg_metrics + get_scorer_names()}
-    return metrics
 
-METRICS = get_metrics()
+def get_metrics():
+    curve_metrics = ["precision_recall_curve", "roc_curve", "det_curve"]
+
+    classification_metrics = [
+        'accuracy', 'average_precision', 'balanced_accuracy', 'f1', 'jaccard','matthews_corrcoef', 'precision', 'recall',
+        'roc_auc',
+    ]
+
+    regression_metrics = [
+        'd2_absolute_error_score', 'explained_variance', 'neg_max_error',
+        'neg_mean_absolute_error', 'neg_mean_absolute_percentage_error',
+        'neg_mean_gamma_deviance', 'neg_mean_poisson_deviance', 'neg_mean_squared_error',
+        'neg_mean_squared_log_error', 'neg_median_absolute_error',
+        'neg_root_mean_squared_error', 'neg_root_mean_squared_log_error', 'r2'
+    ]
+
+    cls_metrics = curve_metrics + classification_metrics
+
+    return {"classification": cls_metrics, "regression": regression_metrics}
+
+
+def get_data_splits():
+    qsprpred_split_classes = get_non_abstract_classes_from_module('qsprpred.data.sampling.splits')
+    qsprpred_split_classes = [f'qsprpred.data.sampling.splits.{name}' for name in qsprpred_split_classes]
+
+    sklearn_split_classes = get_non_abstract_classes_from_module('sklearn.model_selection._split')
+    sklearn_split_classes = [f'sklearn.model_selection.{name}' for name in sklearn_split_classes if
+                             any(suffix in name for suffix in ['Split', 'Fold', 'CV'])]
+
+    return qsprpred_split_classes + sklearn_split_classes
+
 
 def parse_interval(constraint):
     constraint = str(constraint)
@@ -237,24 +259,28 @@ def parse_interval(constraint):
     if r != "inf": interval["max"] = float(r)
     if "min" in interval: interval["leq"] = "bq" if lb == "[" else "b"
     if "max" in interval: interval["req"] = "sq" if rb == "]" else "s"
-    value =  {"type":type_, "interval": interval}
+    value = {"type": type_, "interval": interval}
     return value
+
 
 def _constraint_processor(constraint):
     if type(constraint) == Interval:
         return parse_interval(constraint)
     elif type(constraint) == StrOptions:
-        return {"type":"str", "choices": [o for o in constraint.options]}
+        return {"type": "str", "choices": [o for o in constraint.options]}
     elif inspect.isclass(constraint) and issubclass(constraint, DistanceMetric):
         return {"type": "str", "choices": ["euclidean", "manhattan", "chebyshev'"]}
-    elif constraint == "boolean" or (inspect.isclass(constraint) and (issubclass(constraint, bool) or issubclass(constraint, np.bool_))):
-        return {"type":"bool"}
+    elif constraint == "boolean" or (
+            inspect.isclass(constraint) and (issubclass(constraint, bool) or issubclass(constraint, np.bool_))):
+        return {"type": "bool"}
     elif inspect.isclass(constraint) and (issubclass(constraint, list) or issubclass(constraint, dict)):
         return None
     else:
         return None
 
+
 DISCARDED_PARAMS = ["self", "random_state", "verbose", "n_jobs", ]
+
 
 def get_sklearn_params_with_constraints(module_name, class_=None):
     if class_ is None:
@@ -302,6 +328,9 @@ def get_sklearn_params_with_constraints(module_name, class_=None):
 sklearn_regressors, sklearn_classifiers = get_sklearn_models()
 SKLEARN_MODELS = sklearn_regressors | sklearn_classifiers
 SKLEARN_MODELS_PARAMS = {k: get_sklearn_params_with_constraints(v) for k, v in SKLEARN_MODELS.items()}
+METRICS = get_metrics()
+DATA_SPLITS = get_data_splits()
+SCAFFOLDS = get_non_abstract_classes_from_module("qsprpred.data.chem.scaffolds")
 
 
 def get_default_params(class_=None, module_name=None):
@@ -316,10 +345,16 @@ def get_default_params(class_=None, module_name=None):
         if param.default is inspect.Parameter.empty:
             params[param_name] = None
         else:
-            params[param_name] = param.default
+            if not isinstance(param.default, (int, float, str)):
+                params[param_name] = str(param.default)
+            else:
+                params[param_name] = param.default
     return params
 
+
 DISCARD_NAMES = ["polymorphic_ctype", "trainingStrategy"]
+
+
 def get_default_params_django(class_=None, module_name=None):
     django_field2python = {
         "CharField": "str",
@@ -343,7 +378,7 @@ def get_default_params_django(class_=None, module_name=None):
                 field_type = django_field2python.get(field_type, field_type)
                 default_value = field.default if field.default != models.NOT_PROVIDED else None
                 if field.name not in DISCARD_NAMES:
-                    parameters[field.name] = {"type":field_type, "value":default_value}
+                    parameters[field.name] = {"type": field_type, "value": default_value}
     else:
         parameters = model_class.arguments
     return parameters
