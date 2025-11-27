@@ -237,7 +237,7 @@ def get_data_splits():
 
     sklearn_split_classes = get_non_abstract_classes_from_module('sklearn.model_selection._split')
     sklearn_split_classes = [f'sklearn.model_selection.{name}' for name in sklearn_split_classes if
-                             any(suffix in name for suffix in ['Split', 'Fold', 'CV'])]
+                             any(suffix in name for suffix in ['Split', 'Fold', 'CV']) and not name.startswith('_')]
 
     return qsprpred_split_classes + sklearn_split_classes
 
@@ -331,6 +331,7 @@ SKLEARN_MODELS_PARAMS = {k: get_sklearn_params_with_constraints(v) for k, v in S
 METRICS = get_metrics()
 DATA_SPLITS = get_data_splits()
 SCAFFOLDS = get_non_abstract_classes_from_module("qsprpred.data.chem.scaffolds")
+CLUSTERING = get_non_abstract_classes_from_module("qsprpred.data.chem.clustering")
 
 
 def get_default_params(class_=None, module_name=None):

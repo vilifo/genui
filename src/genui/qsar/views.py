@@ -20,7 +20,8 @@ from .tasks import buildQSARModel, predictWithQSARModel
 from genui.utils.extensions.tasks.utils import runTask
 from genui import celery_app
 from genui.utils.inspection import get_default_params, get_default_params_django, sklearn_regressors, \
-    sklearn_classifiers, SKLEARN_MODELS, SKLEARN_MODELS_PARAMS, getSubclassesFromModule, METRICS, DATA_SPLITS, SCAFFOLDS
+    sklearn_classifiers, SKLEARN_MODELS, SKLEARN_MODELS_PARAMS, getSubclassesFromModule, METRICS, DATA_SPLITS, \
+    SCAFFOLDS, CLUSTERING
 
 
 class QSARModelViewSet(PredictMixIn, ModelViewSet):
@@ -171,7 +172,8 @@ def list_data_splits(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def list_aggregation_functions(request):
-    serializer = rest_serializers.ListSerializer(data=["max", "min", "mean", "sum", "median", "std", "var"], child=rest_serializers.CharField())
+    serializer = rest_serializers.ListSerializer(data=["max", "min", "mean", "sum", "median", "std", "var"],
+                                                 child=rest_serializers.CharField())
     serializer.is_valid(raise_exception=True)
     return Response(serializer.data)
 
@@ -184,13 +186,21 @@ def list_scaffolds(request):
     return Response(serializer.data)
 
 
+@ api_view(['GET'])
+@permission_classes([AllowAny])
+def list_clustering(request):
+    serializer = rest_serializers.ListSerializer(data=CLUSTERING, child=rest_serializers.CharField())
+    serializer.is_valid(raise_exception=True)
+    return Response(serializer.data)
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_data_splits_params(request, data_split):
     module_name, func_name = data_split.rsplit(".", 1)
     args = get_default_params(func_name, module_name)
-    unwanted_args = ["dataset", "weights"]
-    args = {k:v for k,v in args.items() if k not in unwanted_args}
+    unwanted_args = ["dataset", "weights", "custom"]
+    args = {k: v for k, v in args.items() if not any(sub in k for sub in unwanted_args)}
     return Response(args)
 
 

@@ -1,5 +1,6 @@
 import traceback
 
+import numpy as np
 from django.conf import settings
 from django.db import transaction
 
@@ -66,6 +67,32 @@ class ModelPerformanceListView(
     serializer_class = ModelPerformanceSerializer
     pagination_class = PerformancePagination
     owner_relation = "model__project__owner"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        exclude_nan = self.request.query_params.get('exclude_nan', 'false').lower() == 'true'
+        if exclude_nan:
+            queryset = queryset.exclude(value__isnull=True)
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        page = self.paginate_queryset(queryset)
+
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            data = serializer.data
+            for item in data:
+                if 'value' in item and item['value'] is not None:
+                    try:
+                        if np.isnan(float(item['value'])):
+                            item['value'] = None
+                    except (ValueError, TypeError):
+                        pass
+            return self.get_paginated_response(data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 class ModelFileView(

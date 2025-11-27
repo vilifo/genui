@@ -33,6 +33,7 @@ routes = [
     , path('data-splits/<str:data_split>/params', views.get_data_splits_params)
     , path('aggregation-functions/', views.list_aggregation_functions)
     , path('data-splits/scaffolds/', views.list_scaffolds)
+    , path('data-splits/clustering/', views.list_clustering)
 ]
 
 urlpatterns = [
