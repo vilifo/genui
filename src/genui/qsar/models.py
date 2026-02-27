@@ -36,5 +36,4 @@ class ModelActivity(Activity):
 
 class QSPRPredSklearnModel(models.Model):
     name = models.CharField()
-    type = models.CharField()
     params = models.JSONField()

@@ -211,5 +211,4 @@ class ModelActivitySetSerializer(ActivitySetSerializer):
 
 class QSPRPredSklearnModelSerializer(serializers.Serializer):
     name = serializers.CharField()
-    type = serializers.CharField()
     params = serializers.DictField(child=serializers.CharField(), required=False)
