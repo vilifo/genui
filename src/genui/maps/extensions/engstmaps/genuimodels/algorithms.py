@@ -1,5 +1,6 @@
 from pandas import DataFrame
 from qsprpred.data import MoleculeTable
+import numpy as np
 
 from genui.maps.genuimodels.algorithms import MapAlgorithm
 from genui.maps.models import Point
@@ -143,7 +144,9 @@ class PCA(EngstMaps):
         return self.model.transform(self.scale(X))
 
     def scale(self, X) -> DataFrame:
-
+        X = np.array(X)
+        if not X.flags["WRITEABLE"]:
+            X = np.copy(X)
         return self.scaler.fit_transform(X)
 
 class MDS(EngstMaps):
