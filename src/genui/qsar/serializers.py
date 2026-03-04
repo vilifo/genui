@@ -73,7 +73,9 @@ class QSARModelInitSerializer(QSARModelSerializer):
             embeddings = []
             for emb in initial_data["trainingStrategy"]["embeddings"]:
                 if isinstance(emb, dict):
-                    eid, _ = EmbeddingCalculator.objects.get_or_create(**emb)
+                    eid = EmbeddingCalculator.objects.filter(**emb).first()
+                    if not eid:
+                        eid = EmbeddingCalculator.objects.create(**emb)
                     embeddings.append(eid.id)
                 else:
                     embeddings.append(emb)

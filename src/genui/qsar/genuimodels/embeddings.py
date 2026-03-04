@@ -1,4 +1,5 @@
 import importlib
+import inspect
 from . import bases
 
 
@@ -11,6 +12,7 @@ class Fingerprint(bases.EmbeddingCalculator):
 class DescriptorSet(bases.EmbeddingCalculator):
     name = "DescriptorSet"
     module = importlib.import_module("qsprpred.data.descriptors.sets")
+    descriptors_name = "descriptors"
     abstract = True
 
     def get_default_parameters(self):
@@ -25,9 +27,14 @@ def create_fingerprint_class(name):
 
 
 def create_descriptor_set_class(name):
+    cls = getattr(DescriptorSet.module, name)
+    sig = inspect.signature(cls.__init__)
+    parameters = [k for k in sig.parameters.keys()]
+
     return type(name, (DescriptorSet,), {
         'name': name,
-        'abstract': False
+        'abstract': False,
+        'descriptors_name': parameters[1]
     })
 
 

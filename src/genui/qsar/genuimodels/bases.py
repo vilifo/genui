@@ -56,4 +56,7 @@ class EmbeddingBuilderMixIn:
 
     def _init_embedding_calculator(self, django_model, subtype="embeddings"):
         class_ = self.findEmbeddingClass(django_model.name, django_model.corePackage, subtype)
+        if "descriptors" in django_model.arguments:
+            arguments = {class_.descriptors_name: django_model.arguments["descriptors"]}
+            return class_(self)(**arguments) if class_ else None
         return class_(self)(**django_model.arguments) if class_ else None
