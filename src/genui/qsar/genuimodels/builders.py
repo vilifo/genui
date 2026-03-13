@@ -46,6 +46,15 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
         ]
         if self.hyper_param_opt:
             self.progressStages.append("Optimizing hyperparameters...")
+            if self.hyper_param_opt.__class__.__name__ == "GridSearchOptimization":
+                num_combinations = 1
+                for params in self.search_space.values():
+                    num_combinations *= len(params)
+                for i in range(num_combinations):
+                    self.progressStages.append(f"Evaluating combination {i}...")
+            elif self.hyper_param_opt.__class__.__name__ == "OptunaOptimization":
+                for i in range(self.hyper_param_opt.nTrials):
+                    self.progressStages.append(f"Evaluating trial {i}...")
 
         for validation in self.validations:
             self.progressStages.extend([f"CV fold {x + 1}" for x in range(validation.cvFolds)])
@@ -72,11 +81,14 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
                 dataset.split(split_instance)
 
                 if self.hyper_param_opt:
+                    monitor.on_assessment_start = True
+                    monitor.on_fold_start = False
                     metrics_aggregator.perfClass = core_models.HyperparameterOptimizationPerformance
                     optimizer_class = getattr(qsprpred_models, self.hyper_param_opt.__class__.__name__)
                     kwargs = {"param_grid": self.search_space,
                               "model_assessor": CrossValAssessor(self.hypo_metric),
-                              "score_aggregation": self.hyper_param_aggregator}
+                              "score_aggregation": self.hyper_param_aggregator,
+                              "monitor": monitor}
                     if "nTrials" in dir(self.hyper_param_opt):
                         kwargs["n_trials"] = self.hyper_param_opt.nTrials
                     optimizer = optimizer_class(**kwargs)
@@ -85,6 +97,8 @@ class BasicQSARModelBuilder(EmbeddingBuilderMixIn, PredictionMixIn, ValidationMi
                     old_params.update(**params)
                     self.model.params["parameters"] = json.dumps(old_params)
                     metrics_aggregator.perfClass = core_models.ModelPerformanceCV
+                    monitor.on_fold_start = True
+                    monitor.on_assessment_start = False
 
                 # Perform cross-validation
                 is_regression = self.training.mode.name == Algorithm.REGRESSION

@@ -1,6 +1,8 @@
 import json
 import logging
 import traceback
+
+import numpy as np
 from django.core.files.base import ContentFile
 from django.db import models, transaction
 from django.db.models import Avg
@@ -94,7 +96,7 @@ class Map(Model):
                             point_data['features'].append(None)
                     else:
                         point_data['features'].append(None)
-
+                point_data['features'] = [p if p is not None and not np.isnan(p) else None for p in point_data['features']]
                 ret['points'][point.id] = point_data
                 ret['compounds'][point.id] = {
                     'smiles': molecule.smiles,

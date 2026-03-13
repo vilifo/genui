@@ -34,7 +34,7 @@ class QSPRPredScikitModel(Algorithm):
     def _init_model(self):
         if not self._model:
             if self.sklearn_class is None:
-                self.sklearn_class = self.import_sklearn_model(self.params['alg'])
+                self.sklearn_class = self.import_model(self.params['alg'])
             alg_instance = self.alg(
                 base_dir=self.temp_dir.name,
                 alg=self.sklearn_class,
@@ -99,9 +99,18 @@ class QSPRPredScikitModel(Algorithm):
     @staticmethod
     def import_sklearn_model(model_name):
         """Dynamically imports a model."""
-        if model_name not in SKLEARN_MODELS:
-            raise ValueError(f"Model '{model_name}' not found in algorithms dictionary.")
         full_path = SKLEARN_MODELS[model_name]
+        module_path, class_name = full_path.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        model_class = getattr(module, class_name)
+        return model_class
+
+    @staticmethod
+    def import_model(model_name):
+        if model_name in SKLEARN_MODELS:
+            full_path = SKLEARN_MODELS[model_name]
+        else:
+            full_path = model_name
         module_path, class_name = full_path.rsplit(".", 1)
         module = importlib.import_module(module_path)
         model_class = getattr(module, class_name)

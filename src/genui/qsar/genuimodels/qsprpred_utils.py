@@ -8,6 +8,7 @@ import traceback
 import importlib
 from genui.models import models
 import re
+import gc
 
 
 def private_state(state):
@@ -44,6 +45,17 @@ class RecordProgressMonitor(BaseMonitor):
             return func(*args, **kwargs)
 
         return method
+
+    def onIterationEnd(self, score: float, scores: list[float]):
+        super().onIterationEnd(score, scores)
+        self.assessments = {}
+        gc.collect()
+
+    def onFoldEnd(self, model_fit, fold_predictions):
+        super().onFoldEnd(model_fit, fold_predictions)
+        self.estimators = {}
+        self.fits = {}
+        gc.collect()
 
 
 class MetricsAggregator:

@@ -619,3 +619,18 @@ class ModelInitTestCase(QSARModelInit, APITestCase):
                       "test_size": 0.2,
                       }
         model = self.createTestQSARModel(dataSplit=data_split)
+
+    def test_xgboost(self):
+        model = self.createTestQSARModel(
+            parameters={"alg": "xgboost.XGBClassifier",
+                        "parameters": json.dumps({})
+                        },)
+
+        model = self.createTestQSARModel(
+            mode=AlgorithmMode.objects.get(name="regression"),
+            parameters={"alg": "xgboost.XGBRegressor",
+                        "parameters": json.dumps({})
+                        },
+            metrics=["r2", "neg_mean_squared_error"],
+            activityType=ActivityTypes.objects.get(value="Ki")
+        )

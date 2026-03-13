@@ -117,7 +117,10 @@ class QSARModelInitSerializer(QSARModelSerializer):
             if "Regressor" in alg and tr_strat_data['mode'].name == "classification":
                 raise serializers.ValidationError("You cannot use a regressor algorithm for a classification model.")
             parameters = json.loads(params['parameters'])
-            alg_parameters = get_default_params(None, SKLEARN_MODELS[alg])
+            if alg not in SKLEARN_MODELS:
+                alg_parameters = get_default_params(None, alg)
+            else:
+                alg_parameters = get_default_params(None, SKLEARN_MODELS[alg])
             for param in parameters:
                 if not param in alg_parameters:
                     raise serializers.ValidationError(
